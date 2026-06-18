@@ -3,244 +3,268 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Ancient Temple Run</title>
+    <title>Temple Run: Ancient Ruins</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #0a0a05; font-family: 'Georgia', serif; touch-action: none; }
-        canvas { display: block; }
-        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; align-items: center; }
-        #stats { position: absolute; top: 20px; right: 20px; color: #ffd700; font-size: 24px; text-align: right; text-shadow: 2px 2px 4px #000; }
-        #menu { background: rgba(30, 20, 10, 0.9); padding: 40px; border: 4px solid #8b4513; border-radius: 0px; text-align: center; pointer-events: auto; margin-top: 15%; box-shadow: 0 0 50px #000; color: #deb887; }
-        h1 { color: #ffd700; margin-top: 0; text-shadow: 3px 3px 0px #5d4037; font-size: 3.5rem; letter-spacing: 2px; text-transform: uppercase; }
-        p { color: #fff; font-size: 1.1rem; line-height: 1.6; }
-        .hint { color: #ffd700; font-weight: bold; }
-        button { background: #8b4513; color: #ffd700; border: 2px solid #ffd700; padding: 15px 50px; font-size: 1.5rem; font-weight: bold; cursor: pointer; transition: 0.3s; margin-top: 20px; text-transform: uppercase; }
-        button:hover { background: #ffd700; color: #8b4513; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #050805; font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, serif; touch-action: none; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: space-between; }
+        #stats { width: 100%; display: flex; justify-content: space-between; padding: 20px; box-sizing: border-box; color: #ffd700; font-size: 24px; text-shadow: 2px 2px 8px #000; font-weight: bold; }
+        #menu { background: rgba(20, 15, 10, 0.95); padding: 40px; border: 5px double #8b4513; text-align: center; pointer-events: auto; margin-bottom: 20vh; box-shadow: 0 0 50px #000; color: #deb887; max-width: 80%; }
+        h1 { color: #ffd700; margin: 0 0 10px 0; text-shadow: 3px 3px 0px #5d4037; font-size: 2.5rem; text-transform: uppercase; letter-spacing: 4px; }
+        .instructions { color: #fff; font-size: 1rem; margin-bottom: 20px; line-height: 1.5; border-top: 1px solid #5d4037; padding-top: 15px; }
+        button { background: linear-gradient(#8b4513, #5d4037); color: #ffd700; border: 2px solid #ffd700; padding: 15px 40px; font-size: 1.2rem; font-weight: bold; cursor: pointer; text-transform: uppercase; transition: 0.2s; }
+        button:hover { transform: scale(1.05); background: #ffd700; color: #5d4037; }
+        #game-over-msg { color: #ff4444; font-size: 1.5rem; font-weight: bold; margin-bottom: 10px; display: none; }
     </style>
 </head>
 <body>
 
     <div id="ui-layer">
         <div id="stats">
-            <div>METERS: <span id="score">0</span></div>
+            <div>DISTANCE: <span id="score">0</span>m</div>
             <div>GOLD: <span id="coins">0</span></div>
         </div>
         <div id="menu">
-            <h1 id="menu-title">Temple Escape</h1>
-            <p>
-                <span class="hint">UP:</span> JUMP OVER RUINS<br>
-                <span class="hint">DOWN:</span> SLIDE UNDER LOGS<br>
-                <span class="hint">SIDES:</span> DODGE PITFALLS
-            </p>
-            <button id="start-btn">Escape the Temple</button>
+            <div id="game-over-msg">THE DEMONS CAUGHT YOU!</div>
+            <h1>TEMPLE ESCAPE</h1>
+            <div class="instructions">
+                <b>W / SPACE / SWIPE UP:</b> JUMP GAPS<br>
+                <b>S / SWIPE DOWN:</b> SLIDE UNDER ROOTS<br>
+                <b>A - D / SWIPE SIDES:</b> DODGE PILLARS
+            </div>
+            <button id="start-btn">Begin Escape</button>
         </div>
     </div>
 
     <script>
+        // --- Initialization ---
         let isPlaying = false;
-        let score = 0, coins = 0, speed = 0.7;
-        const laneWidth = 3.5;
+        let score = 0, coins = 0, speed = 0.8;
+        const laneWidth = 3.2;
         let currentLane = 0;
-        let isJumping = false, isSliding = false, yVelocity = 0;
-        const gravity = 0.022;
-        const jumpStrength = 0.48;
+        let isJumping = false, isSliding = false, yVel = 0;
+        const gravity = 0.022, jumpPower = 0.45;
 
-        // --- Scene & Camera ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050805); // Deep jungle night
-        scene.fog = new THREE.FogExp2(0x050805, 0.015);
-        
-        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 6, 12);
-        camera.lookAt(0, 2, 0);
+        scene.background = new THREE.Color(0x020402);
+        scene.fog = new THREE.FogExp2(0x020402, 0.018);
 
+        const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 5, 12);
+        
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        // --- Lighting (Torch Theme) ---
-        const ambient = new THREE.AmbientLight(0x404040, 0.5); 
-        scene.add(ambient);
+        // --- Lighting ---
+        const hemi = new THREE.HemisphereLight(0x443322, 0x000000, 0.8);
+        scene.add(hemi);
 
-        const torchLight = new THREE.PointLight(0xffaa00, 2, 30);
-        torchLight.position.set(0, 5, 5);
-        scene.add(torchLight);
+        const torch = new THREE.PointLight(0xff9922, 2, 40);
+        torch.position.set(0, 5, 2);
+        scene.add(torch);
 
-        // --- Player ---
-        const playerGroup = new THREE.Group();
-        const charMat = new THREE.MeshStandardMaterial({ color: 0xaa8866 });
-        const charBody = new THREE.Mesh(new THREE.BoxGeometry(1, 1.6, 0.8), charMat);
-        charBody.position.y = 0.8;
-        playerGroup.add(charBody);
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), charMat);
-        head.position.y = 1.9;
-        playerGroup.add(head);
-        scene.add(playerGroup);
+        // --- Character ---
+        const player = new THREE.Group();
+        const adventurerMat = new THREE.MeshStandardMaterial({ color: 0x966F33 });
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.5), adventurerMat);
+        torso.position.y = 1.2;
+        player.add(torso);
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), adventurerMat);
+        head.position.y = 2.1;
+        player.add(head);
+        scene.add(player);
 
-        // --- Chaser (The Demon Monkey vibes) ---
-        const stalker = new THREE.Group();
-        const monsterMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-        const monsterBody = new THREE.Mesh(new THREE.BoxGeometry(3, 4, 2), monsterMat);
-        stalker.add(monsterBody);
-        const eyeGeo = new THREE.SphereGeometry(0.2);
-        const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-        const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(-0.8, 1, 1);
-        const eyeR = new THREE.Mesh(eyeGeo, eyeMat); eyeR.position.set(0.8, 1, 1);
-        stalker.add(eyeL, eyeR);
-        stalker.position.z = 18; // Following behind
-        scene.add(stalker);
+        // --- The Demon Monkey ---
+        const demon = new THREE.Group();
+        const demonMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        for(let i=0; i<3; i++) {
+            const part = new THREE.Mesh(new THREE.SphereGeometry(1 - i*0.2, 8, 8), demonMat);
+            part.position.z = i * 1.5;
+            demon.add(part);
+        }
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshBasicMaterial({color: 0xff0000}));
+        const eyeL = eye.clone(); eyeL.position.set(-0.4, 0.5, -0.8);
+        const eyeR = eye.clone(); eyeR.position.set(0.4, 0.5, -0.8);
+        demon.add(eyeL, eyeR);
+        scene.add(demon);
 
-        // --- Track Building ---
+        // --- Environment Generation ---
         const trackGroup = new THREE.Group();
         scene.add(trackGroup);
 
+        const stoneMat = new THREE.MeshStandardMaterial({ color: 0x444440, roughness: 0.9 });
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 1 });
+        const goldMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.1 });
+
         function createSegment(z) {
-            const group = new THREE.Group();
+            const seg = new THREE.Group();
             
-            // Stone floor
-            const floorGeo = new THREE.BoxGeometry(12, 1, 20);
-            const floorMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 });
-            const floor = new THREE.Mesh(floorGeo, floorMat);
-            floor.position.y = -0.5;
-            group.add(floor);
+            // Randomly create a "hole" in the floor
+            if (Math.random() > 0.15 || z > -40) {
+                const floor = new THREE.Mesh(new THREE.BoxGeometry(10, 2, 20), stoneMat);
+                floor.position.y = -1;
+                seg.add(floor);
+            }
 
-            // Side Pillars
-            const pillarGeo = new THREE.BoxGeometry(1, 6, 1);
-            const pillarMat = new THREE.MeshStandardMaterial({ color: 0x332211 });
-            const p1 = new THREE.Mesh(pillarGeo, pillarMat); p1.position.set(-6.5, 2.5, -5);
-            const p2 = new THREE.Mesh(pillarGeo, pillarMat); p2.position.set(6.5, 2.5, -5);
-            group.add(p1, p2);
+            // Pillars
+            const p1 = new THREE.Mesh(new THREE.BoxGeometry(1, 8, 1), stoneMat);
+            p1.position.set(-5.5, 3, 0);
+            const p2 = p1.clone();
+            p2.position.x = 5.5;
+            seg.add(p1, p2);
 
-            // Torch Flame (Visual)
-            const flameGeo = new THREE.SphereGeometry(0.3);
-            const flameMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
-            const f1 = new THREE.Mesh(flameGeo, flameMat); f1.position.set(-5.8, 4.5, -5);
-            group.add(f1);
-
-            group.position.z = z;
-            return group;
+            seg.position.z = z;
+            return seg;
         }
 
         let segments = [];
-        for(let i=0; i<10; i++) {
-            let seg = createSegment(-i * 20);
+        for(let i=0; i<12; i++) {
+            const seg = createSegment(-i * 20);
             segments.push(seg);
             trackGroup.add(seg);
         }
 
-        // --- Objects ---
+        // --- Game Objects ---
         let objects = [];
-        const stoneMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
-        const woodMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f });
-        const goldMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8, roughness: 0.2 });
-
         function spawn() {
             if(!isPlaying) return;
             const lane = Math.floor(Math.random() * 3) - 1;
-            const type = Math.random();
-            let mesh;
+            const r = Math.random();
+            let obj;
 
-            if (type < 0.2) { // Stone Hurdle (Jump)
-                mesh = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.5, 1), stoneMat);
-                mesh.position.set(lane * laneWidth, 0.75, -100);
-                mesh.userData = { type: 'obs', h: 'low' };
-            } else if (type < 0.4) { // Fallen Log (Slide)
-                mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 4), woodMat);
-                mesh.rotation.z = Math.PI/2;
-                mesh.position.set(lane * laneWidth, 2.8, -100);
-                mesh.userData = { type: 'obs', h: 'high' };
-            } else { // Gold Idol
-                mesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.6), goldMat);
-                mesh.position.set(lane * laneWidth, 1.2, -100);
-                mesh.userData = { type: 'coin' };
+            if (r < 0.25) { // Low Stone hurdle
+                obj = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1, 1), stoneMat);
+                obj.position.set(lane * laneWidth, 0.5, -120);
+                obj.userData = { type: 'obs', h: 'low' };
+            } else if (r < 0.5) { // High tree root
+                obj = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 4), woodMat);
+                obj.rotation.z = Math.PI/2;
+                obj.position.set(lane * laneWidth, 2.5, -120);
+                obj.userData = { type: 'obs', h: 'high' };
+            } else { // Gold coin pattern
+                for(let j=0; j<3; j++) {
+                    const coin = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.1, 8, 16), goldMat);
+                    coin.position.set(lane * laneWidth, 1.2, -120 - (j * 3));
+                    coin.userData = { type: 'coin' };
+                    scene.add(coin);
+                    objects.push(coin);
+                }
+                setTimeout(spawn, 1000); return;
             }
 
-            scene.add(mesh);
-            objects.push(mesh);
-            setTimeout(spawn, Math.max(250, 1000 - speed * 100));
+            scene.add(obj);
+            objects.push(obj);
+            setTimeout(spawn, Math.max(300, 1200 - speed * 100));
         }
 
         // --- Controls ---
-        const moveL = () => { if(currentLane > -1) currentLane--; };
-        const moveR = () => { if(currentLane < 1) currentLane++; };
-        const jump = () => { if(!isJumping && !isSliding) { isJumping = true; yVelocity = jumpStrength; } };
-        const slide = () => { 
-            if(!isSliding && !isJumping) { 
-                isSliding = true; 
-                playerGroup.scale.y = 0.3; playerGroup.position.y = -0.4;
-                setTimeout(() => { isSliding = false; playerGroup.scale.y = 1; playerGroup.position.y = 0; }, 800);
+        const move = (dir) => { 
+            if(!isPlaying) return;
+            currentLane = Math.max(-1, Math.min(1, currentLane + dir));
+            player.rotation.z = -dir * 0.2; // Tilt effect
+            setTimeout(() => player.rotation.z = 0, 200);
+        };
+        const jump = () => { if(!isJumping && !isSliding) { isJumping = true; yVel = jumpPower; } };
+        const slide = () => {
+            if(!isSliding && !isJumping) {
+                isSliding = true; player.scale.y = 0.4; player.position.y = -0.5;
+                setTimeout(() => { isSliding = false; player.scale.y = 1; player.position.y = 0; }, 700);
             }
         };
 
         window.addEventListener('keydown', e => {
-            if(e.code === 'ArrowLeft') moveL(); if(e.code === 'ArrowRight') moveR();
-            if(e.code === 'ArrowUp' || e.code === 'Space') jump(); if(e.code === 'ArrowDown') slide();
+            if(e.code === 'ArrowLeft' || e.code === 'KeyA') move(-1);
+            if(e.code === 'ArrowRight' || e.code === 'KeyD') move(1);
+            if(e.code === 'ArrowUp' || e.code === 'Space' || e.code === 'KeyW') jump();
+            if(e.code === 'ArrowDown' || e.code === 'KeyS') slide();
         });
 
-        let tsX, tsY;
-        window.addEventListener('touchstart', e => { tsX = e.touches[0].clientX; tsY = e.touches[0].clientY; });
+        // Mobile Swipes
+        let touchX, touchY;
+        window.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; touchY = e.touches[0].clientY; });
         window.addEventListener('touchend', e => {
-            let dx = e.changedTouches[0].clientX - tsX, dy = e.changedTouches[0].clientY - tsY;
-            if(Math.abs(dx) > Math.abs(dy)) { if(dx > 30) moveR(); else if(dx < -30) moveL(); }
-            else { if(dy < -30) jump(); else if(dy > 30) slide(); }
+            let dx = e.changedTouches[0].clientX - touchX, dy = e.changedTouches[0].clientY - touchY;
+            if(Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? 1 : -1);
+            else (dy < 0) ? jump() : slide();
         });
 
-        // --- Main Loop ---
+        // --- Main Game Loop ---
         function animate() {
             requestAnimationFrame(animate);
             if(isPlaying) {
                 score++;
-                document.getElementById('score').innerText = Math.floor(score/10);
-                speed += 0.0001;
+                document.getElementById('score').innerText = Math.floor(score/5);
+                speed += 0.00015;
 
-                // Player Movement
-                playerGroup.position.x += (currentLane * laneWidth - playerGroup.position.x) * 0.15;
+                // Physics
+                player.position.x += (currentLane * laneWidth - player.position.x) * 0.15;
                 if(isJumping) {
-                    playerGroup.position.y += yVelocity;
-                    yVelocity -= gravity;
-                    if(playerGroup.position.y <= 0) { playerGroup.position.y = 0; isJumping = false; }
+                    player.position.y += yVel;
+                    yVel -= gravity;
+                    if(player.position.y <= 0) { player.position.y = 0; isJumping = false; }
                 }
 
-                // Stalker following & bobbing
-                stalker.position.x = playerGroup.position.x;
-                stalker.position.y = 2 + Math.sin(Date.now() * 0.01) * 0.5;
+                // Demon follows with bobbing
+                demon.position.x = player.position.x;
+                demon.position.z = 16 + Math.sin(Date.now()*0.005);
+                demon.position.y = 1.5 + Math.cos(Date.now()*0.01) * 0.5;
 
-                // Torch flicker
-                torchLight.intensity = 1.5 + Math.random() * 0.5;
-
-                // Track and Objects
-                segments.forEach(s => {
-                    s.position.z += speed;
-                    if(s.position.z > 20) s.position.z -= 200;
+                // Environment Scroll
+                segments.forEach(seg => {
+                    seg.position.z += speed;
+                    if(seg.position.z > 20) {
+                        seg.position.z -= 240;
+                        // Randomize hole in recycled segment
+                        const floor = seg.children.find(c => c.geometry.type === "BoxGeometry" && c.position.y === -1);
+                        if(floor) floor.visible = (Math.random() > 0.15);
+                    }
+                    
+                    // Check for falling in hole
+                    if(Math.abs(seg.position.z - player.position.z) < 2) {
+                        const floor = seg.children.find(c => c.geometry.type === "BoxGeometry" && c.position.y === -1);
+                        if(floor && !floor.visible && !isJumping) gameOver();
+                    }
                 });
 
-                objects.forEach((obj, i) => {
+                // Objects handling
+                for(let i = objects.length-1; i>=0; i--) {
+                    const obj = objects[i];
                     obj.position.z += speed;
-                    if(obj.userData.type === 'coin') obj.rotation.y += 0.05;
+                    if(obj.userData.type === 'coin') obj.rotation.y += 0.1;
 
                     // Collision
-                    if(Math.abs(obj.position.z - playerGroup.position.z) < 1 && Math.abs(obj.position.x - playerGroup.position.x) < 1.5) {
+                    const distZ = Math.abs(obj.position.z - player.position.z);
+                    const distX = Math.abs(obj.position.x - player.position.x);
+                    if(distZ < 1 && distX < 1.2) {
                         if(obj.userData.type === 'coin') {
-                            coins++; document.getElementById('coins').innerText = coins;
+                            coins += 10; document.getElementById('coins').innerText = coins;
                             scene.remove(obj); objects.splice(i, 1);
                         } else {
                             let hit = true;
-                            if(obj.userData.h === 'low' && isJumping && playerGroup.position.y > 1.2) hit = false;
+                            if(obj.userData.h === 'low' && isJumping && player.position.y > 0.8) hit = false;
                             if(obj.userData.h === 'high' && isSliding) hit = false;
                             if(hit) gameOver();
                         }
                     }
-                    if(obj.position.z > 15) { scene.remove(obj); objects.splice(i, 1); }
-                });
+                    if(obj.position.z > 20) { scene.remove(obj); objects.splice(i, 1); }
+                }
+
+                // Torch flicker
+                torch.intensity = 1.8 + Math.random() * 0.4;
+                torch.position.x = player.position.x;
             }
             renderer.render(scene, camera);
         }
 
         function startGame() {
             document.getElementById('menu').style.display = 'none';
-            score = 0; coins = 0; speed = 0.7; currentLane = 0;
-            objects.forEach(o => scene.remove(o)); objects = [];
+            document.getElementById('game-over-msg').style.display = 'none';
+            score = 0; coins = 0; speed = 0.8; currentLane = 0;
+            player.position.set(0,0,0);
+            objects.forEach(o => scene.remove(o));
+            objects = [];
             isPlaying = true;
             spawn();
         }
@@ -248,8 +272,7 @@
         function gameOver() {
             isPlaying = false;
             document.getElementById('menu').style.display = 'block';
-            document.getElementById('menu-title').innerText = "Caught!";
-            document.getElementById('start-btn').innerText = "Try Again";
+            document.getElementById('game-over-msg').style.display = 'block';
         }
 
         document.getElementById('start-btn').addEventListener('click', startGame);
