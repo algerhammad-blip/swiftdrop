@@ -1,476 +1,90 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Offline Direct Share</title>
-  <link rel="manifest" href="/manifest.json">
-  <style>
-    :root {
-      --bg: #0b0f19;
-      --card: #151d30;
-      --accent: #2563eb;
-      --accent-hover: #1d4ed8;
-      --text: #f8fafc;
-      --text-muted: #64748b;
-      --success: #10b981;
-      --danger: #ef4444;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background-color: var(--bg); color: var(--text); display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 15px; }
-    .container { background-color: var(--card); border-radius: 16px; width: 100%; max-width: 480px; padding: 24px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); border: 1px solid #1e293b; }
-    h1 { font-size: 1.6rem; margin-bottom: 6px; text-align: center; font-weight: 800; letter-spacing: -0.025em; }
-    p.subtitle { text-align: center; color: var(--text-muted); font-size: 0.85rem; margin-bottom: 24px; }
-    .step { display: none; }
-    .step.active { display: block; }
-    .btn { display: inline-flex; align-items: center; justify-content: center; width: 100%; padding: 12px; border-radius: 10px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 0.95rem; margin-top: 10px; }
-    .btn-primary { background-color: var(--accent); color: white; }
-    .btn-primary:hover { background-color: var(--accent-hover); }
-    .btn-danger { background-color: var(--danger); color: white; }
-    .btn-secondary { background-color: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
-    .btn-secondary:hover { background-color: #334155; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    textarea { width: 100%; height: 75px; background-color: #0b0f19; border: 1px solid #334155; border-radius: 8px; color: #38bdf8; padding: 10px; font-family: monospace; font-size: 0.75rem; resize: none; margin-top: 6px; word-break: break-all; }
-    label { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-    .box { background: #0b0f19; padding: 14px; border-radius: 10px; margin-top: 12px; border: 1px solid #1e293b; }
-    .progress-bar { width: 100%; height: 10px; background-color: #1e293b; border-radius: 5px; overflow: hidden; margin: 10px 0; }
-    .progress-fill { width: 0%; height: 100%; background-color: var(--success); transition: width 0.1s; }
-    .meta-info { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
-    .status-badge { display: inline-block; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: bold; background: #1e293b; color: var(--success); }
-    .file-input-wrapper { border: 2px dashed #334155; border-radius: 10px; padding: 25px; text-align: center; cursor: pointer; position: relative; margin-top: 15px; transition: border 0.2s; }
-    .file-input-wrapper:hover { border-color: var(--accent); }
-    .file-input-wrapper input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-    .hidden { display: none !important; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Network</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #111; overflow: hidden; }
+        canvas { display: block; }
+        #title { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-family: sans-serif; font-size: 3rem; pointer-events: none; opacity: 0.8; }
+    </style>
 </head>
 <body>
+    <div id="title">Hover Around</div>
+    <canvas id="canvas"></canvas>
 
-  <div class="container">
-    <h1>🌲 OffShare</h1>
-    <p class="subtitle">Direct Offline P2P Transfer</p>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height, particles;
+        let mouse = { x: null, y: null, radius: 150 };
 
-    <!-- STEP 1: Select Role -->
-    <div id="step-role" class="step active">
-      <p style="text-align: center; margin-bottom: 20px; font-size: 0.9rem; color: #94a3b8;">Both devices must be connected to the same local Wi-Fi Hotspot.</p>
-      <div class="grid-2">
-        <button class="btn btn-primary" onclick="initHost()">Host (Sender)</button>
-        <button class="btn btn-secondary" onclick="initJoiner()">Joiner (Receiver)</button>
-      </div>
-    </div>
+        window.addEventListener('mousemove', (e) => { mouse.x = e.x; mouse.y = e.y; });
+        window.addEventListener('resize', init);
 
-    <!-- STEP 2a: Host Connection Configuration -->
-    <div id="step-host" class="step">
-      <h3 style="font-size: 1.1rem; margin-bottom: 5px;">Host Setup</h3>
-      <div class="box">
-        <label>1. Local Connection Code</label>
-        <textarea id="host-sdp" readonly placeholder="Generating code..."></textarea>
-        <button id="host-copy-btn" class="btn btn-secondary" style="margin-top: 8px; padding: 8px;" onclick="copyToClipboard('host-sdp', this)">Click to Copy Code</button>
-      </div>
-      <div class="box" style="margin-top: 12px;">
-        <label>2. Paste Answer from Joiner</label>
-        <div style="display: flex; gap: 8px; margin-top: 6px;">
-          <button class="btn btn-primary" style="margin: 0; padding: 8px;" onclick="pasteFromClipboard('host-answer')">Auto Paste Answer</button>
-        </div>
-        <textarea id="host-answer" placeholder="Paste answer here manually if clipboard access is denied..."></textarea>
-        <button class="btn btn-primary" style="margin-top: 10px;" onclick="connectHost()">Establish Connection</button>
-      </div>
-      <button class="btn btn-danger" style="margin-top: 15px; padding: 8px;" onclick="resetApp()">Cancel</button>
-    </div>
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.size = Math.random() * 3 + 1;
+                this.speedX = Math.random() * 3 - 1.5;
+                this.speedY = Math.random() * 3 - 1.5;
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                if (this.x > width || this.x < 0) this.speedX = -this.speedX;
+                if (this.y > height || this.y < 0) this.speedY = -this.speedY;
 
-    <!-- STEP 2b: Joiner Connection Configuration -->
-    <div id="step-joiner" class="step">
-      <h3 style="font-size: 1.1rem; margin-bottom: 5px;">Joiner Setup</h3>
-      <div class="box">
-        <label>1. Paste Code from Host</label>
-        <button class="btn btn-primary" style="margin: 6px 0; padding: 8px;" onclick="pasteFromClipboard('joiner-offer', true)">Auto Paste & Generate Answer</button>
-        <textarea id="joiner-offer" placeholder="Paste Host code manually if clipboard is blocked..." oninput="generateAnswer()"></textarea>
-      </div>
-      <div class="box" style="margin-top: 12px;">
-        <label>2. Generated Answer Code</label>
-        <textarea id="joiner-sdp" readonly placeholder="Waiting for Host code..."></textarea>
-        <button id="joiner-copy-btn" class="btn btn-secondary" style="margin-top: 8px; padding: 8px;" onclick="copyToClipboard('joiner-sdp', this)">Click to Copy Answer</button>
-      </div>
-      <button class="btn btn-danger" style="margin-top: 15px; padding: 8px;" onclick="resetApp()">Cancel</button>
-    </div>
-
-    <!-- STEP 3: Transfer Panel -->
-    <div id="step-room" class="step">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <div><span class="status-badge">✓ Connected Directly</span></div>
-        <button class="btn btn-danger" style="margin: 0; width: auto; padding: 6px 12px; font-size: 0.8rem;" onclick="leaveRoom()">Disconnect</button>
-      </div>
-
-      <!-- File Drop & Selector -->
-      <div id="share-controls">
-        <div class="file-input-wrapper">
-          <p id="file-label" style="font-size: 0.9rem; color: #94a3b8;">Choose a file to transfer</p>
-          <input type="file" id="file-selector" onchange="fileSelected()">
-        </div>
-        <button id="send-btn" class="btn btn-primary hidden" onclick="startSendingFile()">Transfer File</button>
-      </div>
-
-      <!-- Transfer Metrics Section -->
-      <div id="progress-block" class="box hidden">
-        <h4 id="transfer-title" style="font-size: 0.95rem; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Transferring</h4>
-        <div class="progress-bar">
-          <div id="progress-fill" class="progress-fill"></div>
-        </div>
-        <div class="meta-info">
-          <span id="transfer-percent" style="font-weight: bold; color: var(--success);">0%</span>
-          <span id="transfer-speed">Speed: 0 B/s</span>
-          <span id="transfer-eta">ETA: --</span>
-        </div>
-        <div class="meta-info" style="margin-top: 6px; border-top: 1px solid #1e293b; padding-top: 6px;">
-          <span id="transfer-stats">0 B / 0 B</span>
-        </div>
-        <button class="btn btn-danger" style="margin-top: 15px; padding: 8px; font-size: 0.85rem;" onclick="cancelTransfer()">Cancel File Transfer</button>
-      </div>
-
-      <!-- Download Output Box -->
-      <div id="download-block" class="box hidden">
-        <p style="color: var(--success); font-weight: bold; text-align: center; font-size: 0.95rem; margin-bottom: 10px;">File Received Successfully!</p>
-        <a id="download-link" class="btn btn-primary" style="text-decoration: none;" download>Save File to Laptop</a>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
-      });
-    }
-
-    let pc;
-    let dataChannel;
-    let selectedFile;
-    let transferCancelled = false;
-    let receivedChunks = [];
-    let receivedBytes = 0;
-    let incomingFileMeta = null;
-    let speedTimer;
-    let speedBytesLast = 0;
-    let speedTimeLast = 0;
-    let transferSpeed = 0;
-
-    const webrtcConfig = { iceServers: [] }; // No STUN/TURN servers to enforce pure offline local network connection
-
-    function showStep(stepId) {
-      document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
-      document.getElementById(stepId).classList.add('active');
-    }
-
-    function resetApp() {
-      if (pc) pc.close();
-      showStep('step-role');
-    }
-
-    // Helper: Minify SDP by filtering out non-host candidates to dramatically reduce string length
-    function cleanSDP(sdpObj) {
-      const sdpString = sdpObj.sdp;
-      const minifiedLines = sdpString.split('\r\n').filter(line => {
-        if (line.startsWith('a=candidate') && !line.includes('typ host')) return false;
-        return line.trim().length > 0;
-      });
-      return {
-        type: sdpObj.type,
-        sdp: minifiedLines.join('\r\n') + '\r\n'
-      };
-    }
-
-    // Clipboard APIs
-    async function copyToClipboard(elementId, btn) {
-      const text = document.getElementById(elementId).value;
-      if (!text) return;
-      try {
-        await navigator.clipboard.writeText(text);
-        const originalText = btn.innerText;
-        btn.innerText = "✓ Copied Successfully!";
-        btn.style.borderColor = "var(--success)";
-        setTimeout(() => {
-          btn.innerText = originalText;
-          btn.style.borderColor = "";
-        }, 2000);
-      } catch (err) {
-        alert("Failed to auto-copy. Please manually highlight and copy the text box.");
-      }
-    }
-
-    async function pasteFromClipboard(elementId, triggerGenerate = false) {
-      try {
-        const text = await navigator.clipboard.readText();
-        document.getElementById(elementId).value = text;
-        if (triggerGenerate) {
-          generateAnswer();
-        }
-      } catch (err) {
-        alert("Unable to access clipboard. Please manually paste into the text box.");
-      }
-    }
-
-    // Host Initiation Flow
-    function initHost() {
-      showStep('step-host');
-      document.getElementById('host-sdp').value = '';
-      document.getElementById('host-answer').value = '';
-      
-      pc = new RTCPeerConnection(webrtcConfig);
-      dataChannel = pc.createDataChannel("fileTransfer", { ordered: true });
-      setupDataChannel();
-
-      pc.onicecandidate = (e) => {
-        if (!e.candidate) {
-          const compressed = cleanSDP(pc.localDescription);
-          document.getElementById('host-sdp').value = btoa(JSON.stringify(compressed));
-        }
-      };
-
-      pc.createOffer().then(offer => pc.setLocalDescription(offer));
-    }
-
-    function connectHost() {
-      const answerVal = document.getElementById('host-answer').value.trim();
-      if (!answerVal) return alert("Please paste the joiner's code.");
-      try {
-        const answerDesc = JSON.parse(atob(answerVal));
-        pc.setRemoteDescription(new RTCSessionDescription(answerDesc));
-      } catch (err) {
-        alert("Invalid code format. Try re-copying.");
-      }
-    }
-
-    // Joiner Initiation Flow
-    function initJoiner() {
-      showStep('step-joiner');
-      document.getElementById('joiner-offer').value = '';
-      document.getElementById('joiner-sdp').value = '';
-      pc = new RTCPeerConnection(webrtcConfig);
-      
-      pc.ondatachannel = (e) => {
-        dataChannel = e.channel;
-        setupDataChannel();
-      };
-    }
-
-    function generateAnswer() {
-      const offerVal = document.getElementById('joiner-offer').value.trim();
-      if (!offerVal) return;
-      try {
-        const offerDesc = JSON.parse(atob(offerVal));
-        pc.setRemoteDescription(new RTCSessionDescription(offerDesc))
-          .then(() => pc.createAnswer())
-          .then(answer => pc.setLocalDescription(answer))
-          .then(() => {
-            pc.onicecandidate = (e) => {
-              if (!e.candidate) {
-                const compressed = cleanSDP(pc.localDescription);
-                document.getElementById('joiner-sdp').value = btoa(JSON.stringify(compressed));
-              }
-            };
-          });
-      } catch (err) {
-        alert("Invalid host code. Try re-pasting.");
-      }
-    }
-
-    // WebRTC Data Channel Control
-    function setupDataChannel() {
-      dataChannel.binaryType = 'arraybuffer';
-      
-      dataChannel.onopen = () => {
-        showStep('step-room');
-      };
-
-      dataChannel.onmessage = (event) => {
-        if (typeof event.data === 'string') {
-          const msg = JSON.parse(event.data);
-          if (msg.type === 'meta') {
-            incomingFileMeta = msg;
-            receivedChunks = [];
-            receivedBytes = 0;
-            transferCancelled = false;
-            initTransferProgressUI(msg.name, msg.size, "Receiving");
-          } else if (msg.type === 'cancel') {
-            handleTransferAborted("Transfer was canceled by the other device.");
-          } else if (msg.type === 'done') {
-            finishReceiving();
-          }
-        } else {
-          if (transferCancelled) return;
-          receivedChunks.push(event.data);
-          receivedBytes += event.data.byteLength;
-          updateProgressUI(receivedBytes, incomingFileMeta.size);
-        }
-      };
-
-      dataChannel.onclose = () => {
-        leaveRoom();
-      };
-    }
-
-    function fileSelected() {
-      const fileInput = document.getElementById('file-selector');
-      if (fileInput.files.length > 0) {
-        selectedFile = fileInput.files[0];
-        document.getElementById('file-label').innerText = `${selectedFile.name} (${formatBytes(selectedFile.size)})`;
-        document.getElementById('send-btn').classList.remove('hidden');
-      }
-    }
-
-    // Chunk Streaming & Backpressure Control
-    async function startSendingFile() {
-      if (!selectedFile) return;
-      document.getElementById('share-controls').classList.add('hidden');
-      initTransferProgressUI(selectedFile.name, selectedFile.size, "Sending");
-      transferCancelled = false;
-
-      dataChannel.send(JSON.stringify({
-        type: 'meta',
-        name: selectedFile.name,
-        size: selectedFile.size
-      }));
-
-      const CHUNK_SIZE = 64 * 1024; // 64KB chunks
-      let offset = 0;
-      speedBytesLast = 0;
-      speedTimeLast = Date.now();
-      
-      speedTimer = setInterval(() => {
-        calculateSpeed(offset, selectedFile.size);
-      }, 1000);
-
-      try {
-        while (offset < selectedFile.size && !transferCancelled) {
-          if (dataChannel.bufferedAmount > 4 * 1024 * 1024) { // Pause if browser buffer exceeds 4MB
-            await new Promise(resolve => {
-              dataChannel.onbufferedamountlow = () => {
-                dataChannel.onbufferedamountlow = null;
-                resolve();
-              };
-            });
-          }
-
-          const chunk = selectedFile.slice(offset, offset + CHUNK_SIZE);
-          const buffer = await chunk.arrayBuffer();
-          dataChannel.send(buffer);
-          offset += chunk.size;
-          updateProgressUI(offset, selectedFile.size);
+                // Mouse interaction
+                let dx = mouse.x - this.x;
+                let dy = mouse.y - this.y;
+                let distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance < mouse.radius) {
+                    this.x -= dx / 10;
+                    this.y -= dy / 10;
+                }
+            }
+            draw() {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
 
-        clearInterval(speedTimer);
-        
-        if (!transferCancelled) {
-          dataChannel.send(JSON.stringify({ type: 'done' }));
-          resetTransferView();
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            particles = [];
+            for (let i = 0; i < 150; i++) particles.push(new Particle());
         }
-      } catch (err) {
-        handleTransferAborted("Error occurred during transfer.");
-      }
-    }
 
-    function finishReceiving() {
-      clearInterval(speedTimer);
-      const fileBlob = new Blob(receivedChunks);
-      const downloadLink = document.getElementById('download-link');
-      downloadLink.href = URL.createObjectURL(fileBlob);
-      downloadLink.download = incomingFileMeta.name;
-      
-      document.getElementById('progress-block').classList.add('hidden');
-      document.getElementById('download-block').classList.remove('hidden');
-    }
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+            for (let i = 0; i < particles.length; i++) {
+                particles[i].update();
+                particles[i].draw();
+                for (let j = i; j < particles.length; j++) {
+                    let dx = particles[i].x - particles[j].x;
+                    let dy = particles[i].y - particles[j].y;
+                    let distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < 100) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${1 - distance/100})`;
+                        ctx.lineWidth = 1;
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            requestAnimationFrame(animate);
+        }
 
-    function calculateSpeed(currentBytes, totalBytes) {
-      const now = Date.now();
-      const elapsed = (now - speedTimeLast) / 1000;
-      if (elapsed <= 0) return;
-
-      const bytesDelivered = currentBytes - speedBytesLast;
-      transferSpeed = bytesDelivered / elapsed;
-
-      speedBytesLast = currentBytes;
-      speedTimeLast = now;
-
-      document.getElementById('transfer-speed').innerText = `Speed: ${formatBytes(transferSpeed)}/s`;
-
-      if (transferSpeed > 0) {
-        const remainingBytes = totalBytes - currentBytes;
-        const etaSeconds = Math.round(remainingBytes / transferSpeed);
-        document.getElementById('transfer-eta').innerText = `ETA: ${formatTime(etaSeconds)}`;
-      } else {
-        document.getElementById('transfer-eta').innerText = `ETA: --`;
-      }
-    }
-
-    function initTransferProgressUI(name, size, mode) {
-      document.getElementById('transfer-title').innerText = `${mode}: ${name}`;
-      document.getElementById('progress-block').classList.remove('hidden');
-      document.getElementById('share-controls').classList.add('hidden');
-      document.getElementById('download-block').classList.add('hidden');
-      
-      if (mode === "Receiving") {
-        speedBytesLast = 0;
-        speedTimeLast = Date.now();
-        speedTimer = setInterval(() => {
-          calculateSpeed(receivedBytes, size);
-        }, 1000);
-      }
-    }
-
-    function updateProgressUI(current, total) {
-      const percent = Math.round((current / total) * 100);
-      document.getElementById('progress-fill').style.width = `${percent}%`;
-      document.getElementById('transfer-percent').innerText = `${percent}%`;
-      document.getElementById('transfer-stats').innerText = `${formatBytes(current)} / ${formatBytes(total)}`;
-    }
-
-    function cancelTransfer() {
-      transferCancelled = true;
-      clearInterval(speedTimer);
-      try {
-        dataChannel.send(JSON.stringify({ type: 'cancel' }));
-      } catch (e) {}
-      handleTransferAborted("Transfer canceled.");
-    }
-
-    function handleTransferAborted(reason) {
-      clearInterval(speedTimer);
-      alert(reason);
-      resetTransferView();
-    }
-
-    function resetTransferView() {
-      document.getElementById('progress-block').classList.add('hidden');
-      document.getElementById('share-controls').classList.remove('hidden');
-      document.getElementById('send-btn').classList.add('hidden');
-      document.getElementById('file-label').innerText = "Choose a file to transfer";
-      document.getElementById('file-selector').value = "";
-      selectedFile = null;
-    }
-
-    function leaveRoom() {
-      clearInterval(speedTimer);
-      if (dataChannel) dataChannel.close();
-      if (pc) pc.close();
-      resetTransferView();
-      document.getElementById('download-block').classList.add('hidden');
-      showStep('step-role');
-    }
-
-    function formatBytes(bytes) {
-      if (bytes === 0) return '0 B';
-      const k = 1024;
-      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    function formatTime(seconds) {
-      if (seconds === Infinity || isNaN(seconds)) return '--';
-      const h = Math.floor(seconds / 3600);
-      const m = Math.floor((seconds % 3600) / 60);
-      const s = seconds % 60;
-      return [h > 0 ? h + 'h' : null, m > 0 ? m + 'm' : null, s + 's'].filter(Boolean).join(' ');
-    }
-  </script>
+        init();
+        animate();
+    </script>
 </body>
 </html>
