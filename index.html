@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SwiftDrop P2P | Industrial Transfer</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root { --primary: #1a7fe0; --bg: #f0f7ff; --text: #0d1b2a; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .card { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 25px rgba(26,127,224,0.1); width: 90%; max-width: 450px; text-align: center; }
+        h1 { color: var(--primary); margin-bottom: 0.5rem; }
+        .peer-id-box { background: var(--bg); padding: 10px; border-radius: 10px; border: 1px solid #c8ddf0; font-weight: bold; margin: 1rem 0; cursor: pointer; }
+        input[type="text"] { width: 100%; padding: 12px; margin: 10px 0; border: 2px solid #c8ddf0; border-radius: 10px; box-sizing: border-box; }
+        .btn { background: var(--primary); color: white; border: none; padding: 15px 30px; border-radius: 50px; font-weight: bold; cursor: pointer; width: 100%; transition: 0.3s; font-size: 1rem; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(26,127,224,0.3); }
+        .btn-receive { background: #00b96b; margin-top: 10px; }
+        #status { margin-top: 1rem; font-size: 0.9rem; color: #4a6080; }
+        .progress-container { width: 100%; background: #eee; border-radius: 10px; margin-top: 20px; display: none; }
+        .progress-bar { width: 0%; height: 10px; background: var(--primary); border-radius: 10px; transition: 0.1s; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>🚀 SwiftDrop P2P</h1>
+    <p>Direct Browser-to-Browser Transfer</p>
+    
+    <div class="peer-id-box" id="my-id-display" onclick="copyId()">Initializing Peer Engine...</div>
+    <p style="font-size: 0.7rem;">Share this ID with the receiver</p>
+
+    <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+
+    <input type="text" id="peer-id-input" placeholder="Enter Receiver's ID">
+    <input type="file" id="file-input" style="display: none;">
+    <button class="btn" onclick="document.getElementById('file-input').click()">📁 SELECT & SEND</button>
+    
+    <div class="progress-container" id="prog-cont">
+        <div class="progress-bar" id="prog-bar"></div>
+    </div>
+    <div id="status">Ready for connection</div>
+</div>
+
+<script>
+    const status = document.getElementById('status');
+    const myIdDisplay = document.getElementById('my-id-display');
+    const progCont = document.getElementById('prog-cont');
+    const progBar = document.getElementById('prog-bar');
+    
+    // Initialize PeerJS
+    const peer = new Peer();
+
+    peer.on('open', (id) => {
+        myIdDisplay.innerText = id;
+        status.innerText = "Waiting for peer...";
+    });
+
+    // SENDER LOGIC
+    document.getElementById('file-input').onchange = (e) => {
+        const file = e.target.files[0];
+        const receiverId = document.getElementById('peer-id-input').value;
+        
+        if(!receiverId) return alert("Please enter the Receiver's ID first!");
+
+        status.innerText = "Connecting to peer...";
+        const conn = peer.connect(receiverId);
+
+        conn.on('open', () => {
+            status.innerText = "⚡ P2P Pipe Established. Sending...";
+            progCont.style.display = "block";
+            
+            // Send metadata then file
+            conn.send({
+                file: file,
+                fileName: file.name,
+                fileType: file.type
+            });
+
+            progBar.style.width = "100%";
+            status.innerText = "✅ Sent Successfully!";
+        });
+    };
+
+    // RECEIVER LOGIC
+    peer.on('connection', (conn) => {
+        status.innerText = "🔗 Peer connected! Incoming file...";
+        
+        conn.on('data', (data) => {
+            status.innerText = "📦 Data received! Creating download...";
+            
+            const blob = new Blob([data.file], { type: data.fileType });
+            const url = window.URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = data.fileName;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            
+            status.innerText = "✅ Download Started: " + data.fileName;
+        });
+    });
+
+    function copyId() {
+        const id = myIdDisplay.innerText;
+        navigator.clipboard.writeText(id);
+        alert("ID Copied: " + id);
+    }
+</script>
+
+</body>
+</html>
