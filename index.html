@@ -15,19 +15,18 @@
         .pill { padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; background: #eee; }
         .online { background: #e6f9f1; color: var(--green); }
         
-        .input-area { margin-bottom: 20px; }
-        input { width: 100%; padding: 14px; border: 2px solid #edf2f7; border-radius: 12px; font-size: 1rem; box-sizing: border-box; outline: none; }
+        input { width: 100%; padding: 14px; border: 2px solid #edf2f7; border-radius: 12px; font-size: 1rem; box-sizing: border-box; outline: none; margin-bottom: 10px; }
         input:focus { border-color: var(--blue); }
         
         .btn { width: 100%; padding: 15px; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s; margin-top: 10px; }
         .btn-blue { background: var(--blue); color: white; }
         .btn-red { background: white; color: var(--red); border: 2px solid #fecaca; }
-        .btn-exit { background: transparent; color: #64748b; border: 1.5px solid #e2e8f0; font-size: 0.8rem; }
+        .btn-exit { background: transparent; color: #64748b; border: 1.5px solid #e2e8f0; font-size: 0.8rem; margin-top: 20px;}
         .btn:active { transform: scale(0.98); }
 
         .transfer-box { background: #f1f5f9; padding: 15px; border-radius: 16px; display: none; margin-top: 20px; }
-        .progress-bg { width: 100%; height: 10px; background: #cbd5e1; border-radius: 5px; overflow: hidden; margin: 10px 0; }
-        .progress-fill { width: 0%; height: 100%; background: var(--blue); }
+        .progress-bg { width: 100%; height: 12px; background: #cbd5e1; border-radius: 6px; overflow: hidden; margin: 10px 0; border: 1px solid #cbd5e1; }
+        .progress-fill { width: 0%; height: 100%; background: var(--blue); transition: width 0.1s; }
         
         #dl-btn { background: var(--green); color: white; text-decoration: none; display: none; text-align: center; }
     </style>
@@ -38,41 +37,44 @@
     <div class="status-box"><span id="status" class="pill">Waiting for Room Code...</span></div>
     <h2>🚀 SwiftDrop P2P</h2>
     
+    <!-- ROOM SETUP -->
     <div id="setup-ui">
         <input type="text" id="room-id" placeholder="Enter Room Code (e.g. 1234)">
         <button class="btn btn-blue" onclick="startPeer()">Connect to Room</button>
     </div>
 
+    <!-- MAIN BUTTONS -->
     <div id="main-ui" style="display:none;">
         <input type="file" id="file-input" style="display:none" onchange="sendFile()">
-        <button class="btn btn-blue" onclick="document.getElementById('file-input').click()">📤 SELECT FILE</button>
-        <!-- EXIT ROOM BUTTON -->
+        <button class="btn btn-blue" onclick="document.getElementById('file-input').click()">📤 SELECT & SEND FILE</button>
         <button class="btn btn-exit" onclick="exitRoom()">🚪 EXIT ROOM</button>
     </div>
 
+    <!-- PROGRESS AREA (VISIBLE ON BOTH SIDES) -->
     <div id="transfer-ui" class="transfer-box">
-        <div id="file-name" style="font-weight:bold; font-size:0.9rem; margin-bottom:5px;"></div>
-        <div id="transfer-mode" style="font-size:0.7rem; color:#64748b; text-transform:uppercase;">Sending...</div>
+        <div id="file-name" style="font-weight:bold; font-size:0.9rem; margin-bottom:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
+        <div id="transfer-mode" style="font-size:0.7rem; color:#64748b; text-transform:uppercase; font-weight:bold;">Initializing...</div>
+        
         <div class="progress-bg"><div id="progress-bar" class="progress-fill"></div></div>
-        <div style="display:flex; justify-content:space-between; font-size:0.8rem;">
-            <span id="perc">0%</span>
+        
+        <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:10px;">
+            <span id="perc" style="font-weight:bold; color:var(--blue);">0%</span>
             <span id="size">0MB / 0MB</span>
         </div>
-        <a id="dl-btn" class="btn">💾 SAVE FILE</a>
-        <!-- CANCEL BUTTON -->
-        <button id="cancel-btn" class="btn btn-red" onclick="cancelTransfer()">✖ CANCEL TRANSFER</button>
+        
+        <a id="dl-btn" class="btn">💾 SAVE RECEIVED FILE</a>
+        <button id="cancel-btn" class="btn btn-red" onclick="cancelTransfer()">✖ CANCEL</button>
     </div>
 </div>
 
 <script>
     let peer, conn;
-    let transferActive = false; // Tracks if a file is currently moving
-    const CHUNK_SIZE = 16384 * 4; // 64KB chunks
+    let transferActive = false;
+    const CHUNK_SIZE = 16384 * 4; // 64KB
 
     function startPeer() {
         const room = document.getElementById('room-id').value;
         if (!room) return alert("Enter code");
-        
         document.getElementById('status').innerText = "Connecting...";
         
         peer = new Peer('sd-room-' + room);
@@ -110,14 +112,17 @@
                 transferActive = true;
                 meta = data;
                 chunks = [];
-                showTransferUI("Receiving: " + data.name, "Receiving...");
+                showTransferUI(data.name, "Receiving...");
             } else if (data.type === 'chunk') {
-                if (!transferActive) return; // Ignore chunks if cancelled
+                if (!transferActive) return;
                 chunks.push(data.data);
-                let progress = (chunks.length * CHUNK_SIZE / meta.size) * 100;
-                updateProgress(progress, chunks.length * CHUNK_SIZE, meta.size);
+                
+                // UPDATE RECEIVER PROGRESS BAR
+                let receivedSize = chunks.length * CHUNK_SIZE;
+                let progress = (receivedSize / meta.size) * 100;
+                updateProgress(progress, receivedSize, meta.size);
 
-                if (chunks.length * CHUNK_SIZE >= meta.size) {
+                if (receivedSize >= meta.size) {
                     const blob = new Blob(chunks);
                     const url = URL.createObjectURL(blob);
                     const dl = document.getElementById('dl-btn');
@@ -131,12 +136,12 @@
             } else if (data.type === 'cancel') {
                 transferActive = false;
                 document.getElementById('transfer-ui').style.display = 'none';
-                alert("Transfer cancelled by peer.");
+                alert("The other person cancelled the transfer.");
             }
         });
-        
+
         conn.on('close', () => {
-            updateStatus("🔴 Peer Disconnected", false);
+            updateStatus("🔴 Peer Left", false);
             document.getElementById('transfer-ui').style.display = 'none';
         });
     }
@@ -146,7 +151,7 @@
         if (!file || !conn) return;
 
         transferActive = true;
-        showTransferUI("Sending: " + file.name, "Sending...");
+        showTransferUI(file.name, "Sending...");
         
         conn.send({ type: 'start', name: file.name, size: file.size });
 
@@ -157,18 +162,19 @@
             conn.send({ type: 'chunk', data: buffer });
             
             offset += CHUNK_SIZE;
-            let progress = (offset / file.size) * 100;
             
+            // UPDATE SENDER PROGRESS BAR
+            let progress = (offset / file.size) * 100;
             if (offset % (CHUNK_SIZE * 5) === 0 || offset >= file.size) {
                 updateProgress(progress, offset, file.size);
             }
-            
-            // Critical: Allows browser to process "Cancel" click during loop
-            await new Promise(resolve => setTimeout(resolve, 0));
+
+            // Yield to browser to keep UI alive
+            await new Promise(r => setTimeout(r, 0));
         }
-        
+
         if (transferActive) {
-            updateStatus("✅ Transfer Complete", true);
+            updateStatus("✅ Sent Successfully", true);
             document.getElementById('cancel-btn').style.display = 'none';
             transferActive = false;
         }
@@ -182,9 +188,8 @@
     }
 
     function exitRoom() {
-        if (conn) conn.close();
-        if (peer) peer.destroy();
-        location.reload(); // Simplest way to reset everything
+        if(peer) peer.destroy();
+        location.reload(); 
     }
 
     function updateStatus(txt, isOnline) {
@@ -199,6 +204,7 @@
         document.getElementById('file-name').innerText = name;
         document.getElementById('transfer-mode').innerText = mode;
         document.getElementById('dl-btn').style.display = 'none';
+        document.getElementById('progress-bar').style.width = "0%";
     }
 
     function updateProgress(p, cur, tot) {
