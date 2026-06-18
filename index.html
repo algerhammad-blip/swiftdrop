@@ -229,7 +229,6 @@
     let transferActive = false;
     let receivedChunks = [];
     let fileMetadata = null;
-    let receivedSize = 0;
     
     // WebRTC Chunk size (64KB is universally optimal for WebRTC Data Channels)
     const CHUNK_SIZE = 64 * 1024; 
@@ -239,7 +238,7 @@
     let lastStatsBytes = 0;
     let uiUpdateInterval = 0;
 
-    // --- PEERJS CONNECTION LOGIC (Your Original Working Logic) ---
+    // --- PEERJS CONNECTION LOGIC ---
     function startPeer() {
         const roomInput = document.getElementById('room-id').value.trim();
         if (!roomInput) {
@@ -267,8 +266,7 @@
                 peer = new Peer(); // Create guest peer with random ID
                 
                 peer.on('open', () => {
-                    // CRITICAL FIX: serialization: 'none' makes it run 10x faster
-                    const connection = peer.connect('swiftdrop-room-' + roomInput, { reliable: true, serialization: 'none' });
+                    const connection = peer.connect('swiftdrop-room-' + roomInput, { reliable: true });
                     connection.on('open', () => setupConn(connection));
                 });
             } else {
@@ -311,49 +309,38 @@
 
     // --- HANDLE INCOMING DATA (RECEIVER LOOP) ---
     function handleIncomingData(data) {
-        // Because we use serialization: 'none', metadata arrives as a string, chunks as ArrayBuffer
-        if (typeof data === 'string') {
-            try {
-                const parsed = JSON.parse(data);
-                // 1. Metadata received (Start transfer)
-                if (parsed.type === 'start') {
-                    transferActive = true;
-                    fileMetadata = parsed;
-                    receivedChunks = [];
-                    receivedSize = 0;
-                    
-                    initStatsTracker();
-                    showTransferUI(parsed.name, "Receiving...");
-                    lockMainUI(true);
-                } 
-                // 2. Transfer Cancelled by Sender
-                else if (parsed.type === 'cancel') {
-                    alert("The sender cancelled the file transfer.");
-                    resetTransferUI();
-                    lockMainUI(false);
-                }
-            } catch (e) {
-                console.error("Parse error", e);
-            }
-        } 
-        // 3. Raw Binary Chunk Received
-        else {
-            if (!transferActive) return;
+        // 1. Metadata received (Start transfer)
+        if (data.type === 'start') {
+            transferActive = true;
+            fileMetadata = data;
+            receivedChunks = [];
             
-            receivedChunks.push(data);
-            receivedSize += data.byteLength;
+            initStatsTracker();
+            showTransferUI(data.name, "Receiving...");
+            lockMainUI(true);
+        } 
+        
+        // 2. File Chunks received
+        else if (data.type === 'chunk') {
+            if (!transferActive) return;
+            receivedChunks.push(data.data);
+            
+            let receivedSize = receivedChunks.length * CHUNK_SIZE;
+            if (receivedSize > fileMetadata.size) receivedSize = fileMetadata.size;
 
-            // CRITICAL FIX: Throttle UI updates to every 100ms so the browser doesn't freeze
-            const now = Date.now();
-            if (now - uiUpdateInterval > 100 || receivedSize >= fileMetadata.size) {
-                updateProgressAndStats(receivedSize, fileMetadata.size);
-                uiUpdateInterval = now;
-            }
+            updateProgressAndStats(receivedSize, fileMetadata.size);
 
             // Transfer Complete Logic
             if (receivedSize >= fileMetadata.size) {
                 finishReceiving();
             }
+        } 
+        
+        // 3. Transfer Cancelled by Sender
+        else if (data.type === 'cancel') {
+            alert("The sender cancelled the file transfer.");
+            resetTransferUI();
+            lockMainUI(false);
         }
     }
 
@@ -369,19 +356,18 @@
         initStatsTracker();
         showTransferUI(file.name, "Sending...");
         
-        // Tell receiver to get ready (Send as string)
-        conn.send(JSON.stringify({ type: 'start', name: file.name, size: file.size, mime: file.type }));
+        // Tell receiver to get ready
+        conn.send({ type: 'start', name: file.name, size: file.size, mime: file.type });
 
         let offset = 0;
-        let lastUiUpdate = Date.now();
         
         // Chunk reading and sending loop
         while (offset < file.size && transferActive) {
             
-            // --- BUFFER OVERFLOW PROTECTION ---
-            // Check buffer. If > 4MB, wait 5ms. Much faster than flat 50ms wait.
-            if (conn.dataChannel && conn.dataChannel.bufferedAmount > 4 * 1024 * 1024) { 
-                await new Promise(resolve => setTimeout(resolve, 5)); 
+            // --- BUFFER OVERFLOW PROTECTION (CRITICAL FOR LARGE FILES) ---
+            // If WebRTC buffer gets larger than 2MB, pause for 50ms to let it drain
+            if (conn.dataChannel.bufferedAmount > 2 * 1024 * 1024) { 
+                await new Promise(resolve => setTimeout(resolve, 50)); 
                 continue; 
             }
 
@@ -391,28 +377,26 @@
             // Safety check: if user clicked cancel during await, stop sending
             if (!transferActive) break; 
 
-            // CRITICAL FIX: Send RAW ArrayBuffer. No heavy object wrapping!
-            conn.send(buffer); 
+            conn.send({ type: 'chunk', data: buffer });
             offset += buffer.byteLength;
             
-            // CRITICAL FIX: Update UI maximum 10 times per second. Prevents DOM Freeze.
-            const now = Date.now();
-            if (now - lastUiUpdate > 100) {
-                updateProgressAndStats(offset, file.size);
-                lastUiUpdate = now;
+            updateProgressAndStats(offset, file.size);
+
+            // Yield to browser UI thread to prevent freezing
+            if (offset % (CHUNK_SIZE * 10) === 0) {
+                await new Promise(resolve => setTimeout(resolve, 0));
             }
         }
 
         // Completion logic
         if (transferActive && offset >= file.size) {
-            updateProgressAndStats(file.size, file.size); // Force final 100% update
             document.getElementById('cancel-btn').style.display = 'none';
             document.getElementById('transfer-mode').innerText = "✅ Sent Successfully";
             document.getElementById('speed').innerText = "--";
             document.getElementById('eta').innerText = "--";
             transferActive = false;
             
-            setTimeout(() => { lockMainUI(false); }, 1000); // Unlock UI after 1 sec
+            setTimeout(() => { lockMainUI(false); }, 2000); // Unlock UI after 2 sec
         }
         
         fileInput.value = ""; // Reset input so same file can be selected again
@@ -422,7 +406,6 @@
     function initStatsTracker() {
         lastStatsTime = Date.now();
         lastStatsBytes = 0;
-        uiUpdateInterval = 0;
     }
 
     function updateProgressAndStats(currentBytes, totalBytes) {
@@ -481,7 +464,7 @@
     function cancelTransfer() {
         transferActive = false;
         if (conn && conn.open) {
-            conn.send(JSON.stringify({ type: 'cancel' }));
+            conn.send({ type: 'cancel' });
         }
         resetTransferUI();
         lockMainUI(false);
@@ -517,7 +500,6 @@
         transferActive = false;
         document.getElementById('transfer-ui').style.display = 'none';
         receivedChunks = [];
-        receivedSize = 0;
     }
 
     function lockMainUI(isLocked) {
@@ -548,4 +530,4 @@
 </script>
 
 </body>
-</html>
+</html> 
