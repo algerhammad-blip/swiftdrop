@@ -3,183 +3,170 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SwiftDrop P2P | Industrial Transfer</title>
+    <title>SwiftDrop P2P Pro</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        :root { --blue: #1a7fe0; --bg: #f0f7ff; --text: #0d1b2a; --green: #00b96b; }
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-        .container { background: white; width: 90%; max-width: 500px; padding: 2rem; border-radius: 24px; box-shadow: 0 15px 35px rgba(26,127,224,0.1); border: 1px solid #c8ddf0; }
-        h1 { color: var(--blue); text-align: center; margin-top: 0; }
-        .status-pill { display: inline-block; padding: 6px 14px; background: #e8f3fd; color: var(--blue); border-radius: 20px; font-size: 0.85rem; font-weight: bold; margin-bottom: 20px; }
-        .input-group { margin-bottom: 1.5rem; }
-        label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 0.9rem; color: #4a6080; }
-        input[type="text"] { width: 100%; padding: 12px; border: 2px solid #ddeeff; border-radius: 12px; font-size: 1rem; box-sizing: border-box; outline: none; transition: 0.3s; }
-        input[type="text"]:focus { border-color: var(--blue); }
-        .btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s; margin-bottom: 10px; }
+        :root { --blue: #1a7fe0; --bg: #f8fbff; --text: #0d1b2a; --green: #00b96b; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .card { background: white; width: 90%; max-width: 450px; padding: 25px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 1px solid #e2e8f0; }
+        h2 { text-align: center; color: var(--blue); margin-top: 0; }
+        
+        .status-box { text-align: center; margin-bottom: 20px; }
+        .pill { padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; background: #eee; }
+        .online { background: #e6f9f1; color: var(--green); }
+        
+        .input-area { margin-bottom: 20px; }
+        input { width: 100%; padding: 14px; border: 2px solid #edf2f7; border-radius: 12px; font-size: 1rem; box-sizing: border-box; outline: none; }
+        input:focus { border-color: var(--blue); }
+        
+        .btn { width: 100%; padding: 15px; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s; margin-top: 10px; }
         .btn-blue { background: var(--blue); color: white; }
-        .btn-blue:disabled { background: #b0cfee; cursor: not-allowed; }
-        .progress-area { background: #f8fbff; border: 1px solid #ddeeff; padding: 15px; border-radius: 16px; margin-top: 20px; display: none; }
-        .bar-bg { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin: 10px 0; }
-        .bar-fill { width: 0%; height: 100%; background: var(--blue); transition: width 0.1s; }
-        .stats { display: flex; justify-content: space-between; font-size: 0.8rem; color: #4a6080; }
-        #download-link { display: none; margin-top: 15px; text-decoration: none; }
+        .btn-blue:active { transform: scale(0.98); }
+
+        .transfer-box { background: #f1f5f9; padding: 15px; border-radius: 16px; display: none; margin-top: 20px; }
+        .progress-bg { width: 100%; height: 10px; background: #cbd5e1; border-radius: 5px; overflow: hidden; margin: 10px 0; }
+        .progress-fill { width: 0%; height: 100%; background: var(--blue); }
+        
+        #dl-btn { background: var(--green); color: white; text-decoration: none; display: none; text-align: center; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div style="text-align: center;"><span class="status-pill" id="conn-status">Initializing...</span></div>
-    <h1>🚀 SwiftDrop P2P</h1>
+<div class="card">
+    <div class="status-box"><span id="status" class="pill">Waiting for Room Code...</span></div>
+    <h2>🚀 SwiftDrop P2P</h2>
     
-    <div class="input-group">
-        <label>1. Set Room Code</label>
-        <input type="text" id="room-input" placeholder="Enter 4 digits (e.g. 5555)">
-        <button class="btn btn-blue" id="connect-btn" style="margin-top:10px;">Connect to Room</button>
+    <div id="setup-ui">
+        <input type="text" id="room-id" placeholder="Enter Room Code (e.g. 1234)">
+        <button class="btn btn-blue" onclick="startPeer()">Connect to Room</button>
     </div>
 
-    <div id="transfer-ui" style="display: none;">
-        <div class="input-group">
-            <label>2. Share Files</label>
-            <input type="file" id="file-input" style="display: none;">
-            <button class="btn btn-blue" onclick="document.getElementById('file-input').click()">📁 Select & Send</button>
-        </div>
+    <div id="main-ui" style="display:none;">
+        <input type="file" id="file-input" style="display:none" onchange="sendFile()">
+        <button class="btn btn-blue" onclick="document.getElementById('file-input').click()">📤 SELECT FILE</button>
     </div>
 
-    <div class="progress-area" id="progress-area">
-        <div id="file-info" style="font-weight: bold; font-size: 0.9rem;">Filename.zip</div>
-        <div class="bar-bg"><div class="bar-fill" id="bar-fill"></div></div>
-        <div class="stats">
-            <span id="prog-percent">0%</span>
-            <span id="prog-size">0 / 0 MB</span>
+    <div id="transfer-ui" class="transfer-box">
+        <div id="file-name" style="font-weight:bold; font-size:0.9rem; margin-bottom:5px;"></div>
+        <div id="transfer-mode" style="font-size:0.7rem; color:#64748b; text-transform:uppercase;">Sending...</div>
+        <div class="progress-bg"><div id="progress-bar" class="progress-fill"></div></div>
+        <div style="display:flex; justify-content:space-between; font-size:0.8rem;">
+            <span id="perc">0%</span>
+            <span id="size">0MB / 0MB</span>
         </div>
-        <a id="download-link" class="btn btn-blue" style="background:var(--green); display:none; text-align:center;">⬇️ Download Ready</a>
+        <a id="dl-btn" class="btn">💾 SAVE FILE</a>
     </div>
 </div>
 
 <script>
-    const CHUNK_SIZE = 16384; // 16KB chunks for high stability
-    let peer = null;
-    let conn = null;
+    let peer, conn;
+    const CHUNK_SIZE = 16384 * 4; // 64KB chunks
 
-    const statusLabel = document.getElementById('conn-status');
-    const roomInput = document.getElementById('room-input');
-    const connectBtn = document.getElementById('connect-btn');
-    const transferUI = document.getElementById('transfer-ui');
-    const progressArea = document.getElementById('progress-area');
-    const barFill = document.getElementById('bar-fill');
-    const progPercent = document.getElementById('prog-percent');
-    const progSize = document.getElementById('prog-size');
-    const fileInfo = document.getElementById('file-info');
-    const downloadLink = document.getElementById('download-link');
+    function startPeer() {
+        const room = document.getElementById('room-id').value;
+        if (!room) return alert("Enter code");
+        
+        document.getElementById('status').innerText = "Connecting...";
+        
+        // PeerJS Setup
+        peer = new Peer('sd-room-' + room);
 
-    connectBtn.onclick = () => {
-        const roomCode = roomInput.value;
-        if (!roomCode) return alert("Enter a code!");
-
-        connectBtn.disabled = true;
-        statusLabel.innerText = "Setting up room...";
-
-        // Logic: Device A is Sender (-S), Device B is Receiver (-R)
-        // We try to be the Receiver first, if we can't, we are the Sender
-        peer = new Peer('sd-' + roomCode);
-
-        peer.on('open', (id) => {
-            statusLabel.innerText = "Room Active: " + roomCode;
-            transferUI.style.display = "block";
-            connectBtn.style.display = "none";
-            roomInput.disabled = true;
+        peer.on('open', () => {
+            updateStatus("🟢 Room Active: " + room, true);
+            document.getElementById('setup-ui').style.display = 'none';
+            document.getElementById('main-ui').style.display = 'block';
         });
 
         peer.on('error', (err) => {
             if (err.type === 'unavailable-id') {
-                // Room occupied? We try to connect to the occupant
-                statusLabel.innerText = "Connecting to Peer...";
-                setupConnection(peer.connect('sd-' + roomCode, { label: 'file-transfer', reliable: true }));
+                // If room exists, connect as client
+                peer = new Peer(); 
+                setTimeout(() => {
+                    const c = peer.connect('sd-room-' + room, {reliable: true});
+                    setupConn(c);
+                }, 500);
             }
         });
 
-        peer.on('connection', (c) => {
-            setupConnection(c);
-        });
-    };
+        peer.on('connection', setupConn);
+    }
 
-    function setupConnection(c) {
+    function setupConn(c) {
         conn = c;
-        statusLabel.innerText = "🟢 Connected to Peer";
-        statusLabel.style.background = "#e6f9f1";
-        statusLabel.style.color = "#00875a";
-        transferUI.style.display = "block";
+        updateStatus("🟢 Connected to Peer", true);
+        document.getElementById('setup-ui').style.display = 'none';
+        document.getElementById('main-ui').style.display = 'block';
 
-        let receivedChunks = [];
-        let metadata = null;
+        let chunks = [];
+        let meta = null;
 
         conn.on('data', (data) => {
-            // Check if it's metadata or a chunk
-            if (data.type === 'metadata') {
-                metadata = data;
-                receivedChunks = [];
-                progressArea.style.display = "block";
-                fileInfo.innerText = "Receiving: " + data.name;
-                downloadLink.style.display = "none";
+            if (data.type === 'start') {
+                meta = data;
+                chunks = [];
+                showTransferUI("Receiving: " + data.name, "Receiving...");
             } else if (data.type === 'chunk') {
-                receivedChunks.push(data.buffer);
-                const progress = (receivedChunks.length / metadata.totalChunks) * 100;
-                updateProgress(progress, receivedChunks.length * CHUNK_SIZE, metadata.size);
+                chunks.push(data.data);
+                let progress = (chunks.length * CHUNK_SIZE / meta.size) * 100;
+                updateProgress(progress, chunks.length * CHUNK_SIZE, meta.size);
 
-                if (receivedChunks.length === metadata.totalChunks) {
-                    const blob = new Blob(receivedChunks);
+                if (chunks.length * CHUNK_SIZE >= meta.size) {
+                    const blob = new Blob(chunks);
                     const url = URL.createObjectURL(blob);
-                    downloadLink.href = url;
-                    downloadLink.download = metadata.name;
-                    downloadLink.style.display = "block";
-                    statusLabel.innerText = "📦 File Received";
+                    const dl = document.getElementById('dl-btn');
+                    dl.href = url;
+                    dl.download = meta.name;
+                    dl.style.display = 'block';
+                    updateStatus("📦 File Received", true);
                 }
             }
         });
     }
 
-    document.getElementById('file-input').onchange = async (e) => {
-        const file = e.target.files[0];
+    async function sendFile() {
+        const file = document.getElementById('file-input').files[0];
         if (!file || !conn) return;
 
-        progressArea.style.display = "block";
-        fileInfo.innerText = "Sending: " + file.name;
+        showTransferUI("Sending: " + file.name, "Sending...");
         
-        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-        
-        // Send Metadata
-        conn.send({
-            type: 'metadata',
-            name: file.name,
-            size: file.size,
-            totalChunks: totalChunks
-        });
+        // Start Signal
+        conn.send({ type: 'start', name: file.name, size: file.size });
 
-        // Chunk and Send
-        const buffer = await file.arrayBuffer();
-        for (let i = 0; i < totalChunks; i++) {
-            const start = i * CHUNK_SIZE;
-            const end = Math.min(start + CHUNK_SIZE, file.size);
-            const chunk = buffer.slice(start, end);
+        let offset = 0;
+        while (offset < file.size) {
+            const chunk = file.slice(offset, offset + CHUNK_SIZE);
+            const buffer = await chunk.arrayBuffer();
+            conn.send({ type: 'chunk', data: buffer });
             
-            conn.send({
-                type: 'chunk',
-                buffer: chunk
-            });
-
-            if (i % 5 === 0) { // Update UI every 5 chunks to save CPU
-                const progress = ((i + 1) / totalChunks) * 100;
-                updateProgress(progress, end, file.size);
+            offset += CHUNK_SIZE;
+            let progress = (offset / file.size) * 100;
+            
+            // UI Update
+            if (offset % (CHUNK_SIZE * 5) === 0 || offset >= file.size) {
+                updateProgress(progress, offset, file.size);
             }
         }
-        updateProgress(100, file.size, file.size);
-        statusLabel.innerText = "✅ Transfer Complete";
-    };
+        updateStatus("✅ Transfer Complete", true);
+    }
 
-    function updateProgress(percent, current, total) {
-        barFill.style.width = percent + "%";
-        progPercent.innerText = Math.round(percent) + "%";
-        progSize.innerText = (current / 1048576).toFixed(2) + " / " + (total / 1048576).toFixed(2) + " MB";
+    function updateStatus(txt, isOnline) {
+        const s = document.getElementById('status');
+        s.innerText = txt;
+        s.className = isOnline ? "pill online" : "pill";
+    }
+
+    function showTransferUI(name, mode) {
+        document.getElementById('transfer-ui').style.display = 'block';
+        document.getElementById('file-name').innerText = name;
+        document.getElementById('transfer-mode').innerText = mode;
+        document.getElementById('dl-btn').style.display = 'none';
+    }
+
+    function updateProgress(p, cur, tot) {
+        p = Math.min(p, 100);
+        document.getElementById('progress-bar').style.width = p + "%";
+        document.getElementById('perc').innerText = Math.round(p) + "%";
+        document.getElementById('size').innerText = (cur/1024/1024).toFixed(1) + "MB / " + (tot/1024/1024).toFixed(1) + "MB";
     }
 </script>
 
