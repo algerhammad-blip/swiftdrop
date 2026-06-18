@@ -182,7 +182,7 @@
 
 <div class="card">
     <div class="status-box"><span id="status" class="pill">Waiting to Connect...</span></div>
-    <h2>⚡ SwiftDrop Pro</h2>
+    <h2>🚀 SwiftDrop Pro</h2>
     
     <!-- 1. ROOM SETUP UI -->
     <div id="setup-ui">
@@ -224,23 +224,26 @@
 </div>
 
 <script>
+    // --- PERFORMANCE TUNING CONSTANTS ---
+    // 256KB chunks — 4× larger than before, fewer send() calls, less serialization overhead
+    const CHUNK_SIZE = 256 * 1024;
+    // Allow up to 16MB in the WebRTC send buffer before pausing (keeps the pipe full)
+    const BUFFER_LIMIT = 16 * 1024 * 1024;
+    // Resume sending once buffer drains below 1MB (event-driven, no polling)
+    const BUFFER_RESUME = 1 * 1024 * 1024;
+    // Pre-load files ≤500MB entirely into RAM — eliminates per-chunk disk I/O
+    const PRELOAD_LIMIT = 500 * 1024 * 1024;
+    // How many chunks to burst-send per loop iteration before checking the buffer again
+    const BURST_COUNT = 120;
+
     // --- GLOBAL VARIABLES ---
     let peer, conn;
     let transferActive = false;
     let receivedChunks = [];
-    let receivedBytes = 0;
+    let receivedSize = 0;
     let fileMetadata = null;
 
-    // ⚡ LIGHTNING OPTIMIZATION #1: Massive chunk size (256KB = 4x fewer messages than 64KB)
-    // 256KB is the maximum safe size for WebRTC Data Channels across all modern browsers
-    const CHUNK_SIZE = 256 * 1024;
-
-    // ⚡ LIGHTNING OPTIMIZATION #2: High buffer thresholds for maximum throughput
-    // Keep the network pipe constantly full without overflowing
-    const BUFFER_HIGH = 8 * 1024 * 1024;  // 8MB — pause sending when buffer exceeds this
-    const BUFFER_LOW  = 2 * 1024 * 1024;  // 2MB — resume sending when buffer drains below this
-
-    // Stats tracking variables
+    // Stats tracking
     let lastStatsTime = 0;
     let lastStatsBytes = 0;
 
@@ -252,47 +255,42 @@
             return;
         }
 
-        // Disable UI while connecting
         document.getElementById('connect-btn').disabled = true;
         updateStatus("Connecting to server...", "waiting");
-        
-        // Attempt to create the room as the HOST
+
+        // Try to become HOST (create the room)
         peer = new Peer('swiftdrop-room-' + roomInput);
 
         peer.on('open', () => {
-            // Room created successfully! Now we wait for a guest.
-            updateStatus(`🟢 Room '${roomInput}' created. Waiting for peer...`, "waiting");
+            updateStatus(`Room '${roomInput}' created. Waiting for peer...`, "waiting");
             document.getElementById('setup-ui').style.display = 'none';
         });
 
         peer.on('error', (err) => {
             if (err.type === 'unavailable-id') {
-                // Room already exists! That means we are the GUEST joining the host.
-                updateStatus("🟡 Room found. Joining...", "waiting");
-                peer = new Peer(); // Create guest peer with random ID
+                // Room exists — join as GUEST
+                updateStatus("Room found. Joining...", "waiting");
+                peer = new Peer();
 
-                // ⚡ LIGHTNING OPTIMIZATION #3: Use serialization: 'none'
-                // Sends raw ArrayBuffers with ZERO serialization overhead
-                // BinaryPack (default) adds encode/decode CPU cost on every single chunk
                 peer.on('open', () => {
-                    const connection = peer.connect('swiftdrop-room-' + roomInput, { 
-                        reliable: true, 
-                        serialization: 'none' 
+                    // Explicit binary serialization — no JSON stringification overhead
+                    const connection = peer.connect('swiftdrop-room-' + roomInput, {
+                        reliable: true,
+                        serialization: 'binary'
                     });
                     connection.on('open', () => setupConn(connection));
                 });
             } else {
-                updateStatus("🔴 Connection Error", "error");
+                updateStatus("Connection Error", "error");
                 document.getElementById('connect-btn').disabled = false;
                 alert("Error: " + err.message);
             }
         });
 
-        // If we are the host, this triggers when the guest connects to us
+        // Host receives incoming connection
         peer.on('connection', (connection) => {
             if (conn) {
-                // Deny third person if already connected
-                connection.close(); 
+                connection.close();
                 return;
             }
             setupConn(connection);
@@ -302,15 +300,15 @@
     // --- SETUP CONNECTION EVENTS ---
     function setupConn(connection) {
         conn = connection;
-        updateStatus("🟢 Connected securely to peer!", "online");
-        
+        updateStatus("Connected securely to peer!", "online");
+
         document.getElementById('setup-ui').style.display = 'none';
         document.getElementById('main-ui').style.display = 'block';
 
         conn.on('data', handleIncomingData);
 
         conn.on('close', () => {
-            updateStatus("🔴 Peer disconnected.", "error");
+            updateStatus("Peer disconnected.", "error");
             resetTransferUI();
             document.getElementById('main-ui').style.display = 'none';
             document.getElementById('setup-ui').style.display = 'block';
@@ -319,56 +317,43 @@
         });
     }
 
-    // --- HANDLE INCOMING DATA (RECEIVER LOOP) ---
-    // ⚡ LIGHTNING OPTIMIZATION #4: With serialization: 'none', control messages 
-    // are JSON strings and file chunks are raw ArrayBuffers — zero deserialization overhead
+    // --- HANDLE INCOMING DATA (RECEIVER) ---
     function handleIncomingData(data) {
-        // String = control message (metadata or cancel)
-        if (typeof data === 'string') {
-            try {
-                const msg = JSON.parse(data);
-
-                // 1. Metadata received (Start transfer)
-                if (msg.type === 'start') {
-                    transferActive = true;
-                    fileMetadata = msg;
-                    receivedChunks = [];
-                    receivedBytes = 0;
-                    
-                    initStatsTracker();
-                    showTransferUI(msg.name, "Receiving...");
-                    lockMainUI(true);
-                } 
-                // 2. Transfer Cancelled by Sender
-                else if (msg.type === 'cancel') {
-                    alert("The sender cancelled the file transfer.");
-                    resetTransferUI();
-                    lockMainUI(false);
-                }
-            } catch (e) {
-                console.error('Parse error:', e);
-            }
-        } 
-        // ArrayBuffer = raw file chunk (no wrapper object, no deserialization!)
-        else {
+        // Metadata — transfer is starting
+        if (data && data.type === 'start') {
+            transferActive = true;
+            fileMetadata = data;
+            receivedChunks = [];
+            receivedSize = 0;
+            initStatsTracker();
+            showTransferUI(data.name, "Receiving...");
+            lockMainUI(true);
+        }
+        // File chunk — thin {d: ArrayBuffer} wrapper to minimize per-message overhead
+        else if (data && data.d) {
             if (!transferActive) return;
-            receivedChunks.push(data);
-            receivedBytes += data.byteLength;
+            receivedChunks.push(data.d);
+            receivedSize += data.d.byteLength;
 
-            updateProgressAndStats(receivedBytes, fileMetadata.size);
+            updateProgressAndStats(receivedSize, fileMetadata.size);
 
-            // Transfer Complete Logic
-            if (receivedBytes >= fileMetadata.size) {
+            if (receivedSize >= fileMetadata.size) {
                 finishReceiving();
             }
         }
+        // Cancellation signal from sender
+        else if (data && data.type === 'cancel') {
+            alert("The sender cancelled the file transfer.");
+            resetTransferUI();
+            lockMainUI(false);
+        }
     }
 
-    // --- SEND FILE LOGIC (SENDER LOOP) ---
+    // --- SEND FILE LOGIC (SENDER) ---
     async function sendFile() {
         const fileInput = document.getElementById('file-input');
         const file = fileInput.files[0];
-        
+
         if (!file || !conn || !conn.open) return;
 
         transferActive = true;
@@ -376,114 +361,108 @@
         initStatsTracker();
         showTransferUI(file.name, "Sending...");
 
-        // ⚡ Send metadata as compact JSON string (tiny overhead, sent once)
-        conn.send(JSON.stringify({ 
-            type: 'start', 
-            name: file.name, 
-            size: file.size, 
-            mime: file.type 
-        }));
+        // Tell receiver to prepare
+        conn.send({ type: 'start', name: file.name, size: file.size, mime: file.type });
+
+        // Configure event-driven backpressure on the raw DataChannel
+        const dc = conn.dataChannel || conn._dc;
+        if (dc) {
+            dc.bufferedAmountLowThreshold = BUFFER_RESUME;
+        }
+
+        // Promise that resolves when the send buffer has drained enough
+        const waitDrain = () => new Promise(resolve => {
+            if (!dc || dc.bufferedAmount <= BUFFER_LIMIT) {
+                resolve();
+                return;
+            }
+            const handler = () => {
+                dc.removeEventListener('bufferedamountlow', handler);
+                resolve();
+            };
+            dc.addEventListener('bufferedamountlow', handler);
+            // Safety fallback: if the event never fires (edge case), resolve after 200ms
+            setTimeout(() => {
+                dc.removeEventListener('bufferedamountlow', handler);
+                resolve();
+            }, 200);
+        });
+
+        // Pre-load entire file into RAM for zero disk-I/O during the send loop
+        let fileBuffer = null;
+        const useMemory = file.size <= PRELOAD_LIMIT;
+        if (useMemory) {
+            fileBuffer = await file.arrayBuffer();
+        }
 
         let offset = 0;
 
-        // ⚡ LIGHTNING OPTIMIZATION #5: Read-ahead pipelining
-        // Pre-read the FIRST chunk so we can overlap disk I/O with network send
-        let pendingBuffer = await file.slice(0, CHUNK_SIZE).arrayBuffer();
-        offset = pendingBuffer.byteLength;
+        while (offset < file.size && transferActive) {
+            await waitDrain();
 
-        // Chunk reading and sending loop
-        while (offset <= file.size && transferActive) {
+            // Burst-send: fire as many chunks as possible before yielding
+            let burst = 0;
+            while (offset < file.size && transferActive && burst < BURST_COUNT) {
+                if (dc && dc.bufferedAmount > BUFFER_LIMIT) break;
 
-            // ⚡ LIGHTNING OPTIMIZATION #6: Event-based backpressure
-            // Instead of polling with setTimeout(50ms) like the original, we use the
-            // native 'bufferedamountlow' event which fires the INSTANT the buffer
-            // drains below threshold — zero wasted wait time
-            if (conn.dataChannel && conn.dataChannel.bufferedAmount > BUFFER_HIGH) {
-                conn.dataChannel.bufferedAmountLowThreshold = BUFFER_LOW;
+                let chunk;
+                if (useMemory) {
+                    // .slice() on an ArrayBuffer is a fast memory copy — no disk I/O
+                    const end = Math.min(offset + CHUNK_SIZE, file.size);
+                    chunk = fileBuffer.slice(offset, end);
+                } else {
+                    // Streaming fallback for very large files
+                    const slice = file.slice(offset, offset + CHUNK_SIZE);
+                    chunk = await slice.arrayBuffer();
+                }
 
-                await new Promise(resolve => {
-                    // Double-check: buffer may have drained between check and listener
-                    if (conn.dataChannel.bufferedAmount <= BUFFER_LOW) {
-                        resolve();
-                        return;
-                    }
-                    const handler = () => {
-                        conn.dataChannel.removeEventListener('bufferedamountlow', handler);
-                        resolve();
-                    };
-                    conn.dataChannel.addEventListener('bufferedamountlow', handler);
-                });
-
-                if (!transferActive) break;
-                continue;
-            }
-
-            // Send the pre-read buffer (raw ArrayBuffer — zero serialization!)
-            if (pendingBuffer) {
-                conn.send(pendingBuffer);
-            }
-
-            // Safety check: if user clicked cancel during await, stop sending
-            if (!transferActive) break;
-
-            // ⚡ LIGHTNING OPTIMIZATION #5 (continued): Read-ahead pipelining
-            // While the current chunk is being transmitted over the network,
-            // read the NEXT chunk from disk simultaneously (I/O overlap)
-            if (offset < file.size) {
-                const nextChunk = file.slice(offset, offset + CHUNK_SIZE);
-                pendingBuffer = await nextChunk.arrayBuffer();
-                offset += pendingBuffer.byteLength;
-            } else {
-                pendingBuffer = null;
+                // Thin wrapper: single-letter key to minimize BinaryPack framing overhead
+                conn.send({ d: chunk });
+                offset += chunk.byteLength;
+                burst++;
             }
 
             updateProgressAndStats(offset, file.size);
 
-            // ⚡ LIGHTNING OPTIMIZATION #7: Yield far less frequently (every 50 chunks ≈ 12.5MB)
-            // Original yielded every 10 chunks (640KB) — 5x less UI thread contention
-            // The event-based backpressure above already yields naturally during pauses
-            if (offset % (CHUNK_SIZE * 50) === 0) {
-                await new Promise(resolve => setTimeout(resolve, 0));
-            }
+            // Yield to the browser's UI thread so the progress bar stays responsive
+            await new Promise(r => setTimeout(r, 0));
         }
 
-        // Completion logic
         if (transferActive && offset >= file.size) {
             document.getElementById('cancel-btn').style.display = 'none';
             document.getElementById('transfer-mode').innerText = "✅ Sent Successfully";
             document.getElementById('speed').innerText = "--";
             document.getElementById('eta').innerText = "--";
             transferActive = false;
-            
-            setTimeout(() => { lockMainUI(false); }, 2000); // Unlock UI after 2 sec
+            setTimeout(() => lockMainUI(false), 2000);
         }
-        
-        fileInput.value = ""; // Reset input so same file can be selected again
+
+        fileInput.value = "";
+        fileBuffer = null; // Release RAM immediately
     }
 
-    // --- TRANSFER UI & STATS LOGIC ---
+    // --- TRANSFER UI & STATS ---
     function initStatsTracker() {
-        lastStatsTime = Date.now();
+        lastStatsTime = performance.now();
         lastStatsBytes = 0;
     }
 
     function updateProgressAndStats(currentBytes, totalBytes) {
-        // Update Progress Bar
-        let percent = (currentBytes / totalBytes) * 100;
+        const percent = (currentBytes / totalBytes) * 100;
         document.getElementById('progress-bar').style.width = Math.min(percent, 100) + "%";
         document.getElementById('perc').innerText = Math.floor(percent) + "%";
         document.getElementById('size').innerText = `${formatBytes(currentBytes)} / ${formatBytes(totalBytes)}`;
 
-        // Throttle Speed & ETA calculations to twice a second (500ms) for stability
-        const now = Date.now();
+        // Throttle speed/ETA to ~4 updates/sec for stable readings
+        const now = performance.now();
         const timeDiff = now - lastStatsTime;
-        
-        if (timeDiff >= 500 || currentBytes === totalBytes) {
+
+        if (timeDiff >= 250 || currentBytes === totalBytes) {
             const bytesDiff = currentBytes - lastStatsBytes;
-            const speedBps = (bytesDiff / timeDiff) * 1000; // Bytes per second
-            
+            const speedBps = (bytesDiff / timeDiff) * 1000;
+
             document.getElementById('speed').innerText = `${formatBytes(speedBps)}/s`;
-            
+
             const remainingBytes = totalBytes - currentBytes;
             const etaSeconds = speedBps > 0 ? (remainingBytes / speedBps) : 0;
             document.getElementById('eta').innerText = formatTime(etaSeconds);
@@ -495,53 +474,47 @@
 
     function finishReceiving() {
         transferActive = false;
-        
-        // Assemble file chunks into a single Blob
+
         const blob = new Blob(receivedChunks, { type: fileMetadata.mime });
         const url = URL.createObjectURL(blob);
-        
-        // Setup download button
+
         const dlBtn = document.getElementById('dl-btn');
         dlBtn.href = url;
         dlBtn.download = fileMetadata.name;
         dlBtn.style.display = 'flex';
-        
-        // Update UI
+
         document.getElementById('cancel-btn').style.display = 'none';
         document.getElementById('transfer-mode').innerText = "✅ File Ready to Save";
         document.getElementById('speed').innerText = "--";
         document.getElementById('eta').innerText = "--";
-        
-        // Unlock main UI so they can send files back
-        lockMainUI(false); 
-        
-        // Free memory chunks
-        receivedChunks = []; 
+
+        lockMainUI(false);
+        receivedChunks = [];
     }
 
-    // --- CANCELLATION & EXIT CONTROLS ---
+    // --- CANCELLATION & EXIT ---
     function cancelTransfer() {
         transferActive = false;
         if (conn && conn.open) {
-            conn.send(JSON.stringify({ type: 'cancel' }));
+            conn.send({ type: 'cancel' });
         }
         resetTransferUI();
         lockMainUI(false);
-        document.getElementById('file-input').value = ""; 
+        document.getElementById('file-input').value = "";
     }
 
     function exitRoom() {
         if (confirm("Are you sure you want to leave the room?")) {
             if (peer) peer.destroy();
-            location.reload(); 
+            location.reload();
         }
     }
 
-    // --- UTILITY & UI FUNCTIONS ---
+    // --- UTILITIES ---
     function updateStatus(text, type) {
-        const statusEl = document.getElementById('status');
-        statusEl.innerText = text;
-        statusEl.className = "pill " + type;
+        const el = document.getElementById('status');
+        el.innerText = text;
+        el.className = "pill " + type;
     }
 
     function showTransferUI(name, mode) {
@@ -557,9 +530,9 @@
 
     function resetTransferUI() {
         transferActive = false;
-        document.getElementById('transfer-ui').style.display = 'none';
         receivedChunks = [];
-        receivedBytes = 0;
+        receivedSize = 0;
+        document.getElementById('transfer-ui').style.display = 'none';
     }
 
     function lockMainUI(isLocked) {
@@ -579,10 +552,8 @@
     function formatTime(seconds) {
         if (!isFinite(seconds) || seconds < 0) return "--";
         if (seconds < 1) return "< 1s";
-        
         seconds = Math.round(seconds);
         if (seconds < 60) return seconds + "s";
-        
         const m = Math.floor(seconds / 60);
         const s = seconds % 60;
         return m + "m " + s + "s";
