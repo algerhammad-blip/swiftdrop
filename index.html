@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SwiftDrop Pro - Ultra Stable Edition</title>
+    <title>SwiftDrop Pro - Stable Connect Edition</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root {
@@ -23,18 +23,18 @@
         body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
         .card { background: var(--card-bg); width: 90%; max-width: 480px; padding: 30px; border-radius: 24px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05); border: 1px solid var(--border); box-sizing: border-box; transition: border 0.3s ease; }
         .card.dragover { border: 3px dashed var(--blue); background: #eff6ff; }
-        
+
         h2 { text-align: center; color: var(--blue); margin-top: 0; font-size: 1.6rem; margin-bottom: 25px; }
-        
+
         .status-box { text-align: center; margin-bottom: 25px; }
         .pill { padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; background: #f1f5f9; color: var(--text-light); display: inline-block; transition: all 0.3s ease; }
         .pill.online { background: #d1fae5; color: var(--green); }
         .pill.waiting { background: #fef3c7; color: #d97706; }
         .pill.error { background: #fee2e2; color: var(--red); }
-        
+
         input[type="text"] { width: 100%; padding: 15px; border: 2px solid var(--border); border-radius: 12px; font-size: 1rem; box-sizing: border-box; outline: none; margin-bottom: 15px; text-align: center; font-weight: bold; letter-spacing: 2px; }
         input[type="text"]:focus { border-color: var(--blue); }
-        
+
         .btn { width: 100%; padding: 16px; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: all 0.2s; box-sizing: border-box; }
         .btn:active { transform: scale(0.98); }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
@@ -47,11 +47,18 @@
         .btn-exit { background: transparent; color: var(--text-light); border: 2px solid var(--border); margin-top: 15px; }
         .btn-exit:hover:not(:disabled) { background: #f8fafc; color: var(--text); }
 
+        .btn-row { display: flex; gap: 10px; }
+        .btn-row .btn { margin-top: 0; }
+
+        #connecting-row { display: none; text-align: center; margin-top: 14px; }
+        .link-btn { background: none; border: none; color: var(--text-light); text-decoration: underline; cursor: pointer; font-size: 0.85rem; padding: 6px; }
+        .link-btn:hover { color: var(--text); }
+
         .transfer-box { background: #f8fafc; padding: 20px; border-radius: 16px; border: 1px solid var(--border); display: none; margin-top: 25px; }
         .file-info { display: flex; flex-direction: column; align-items: center; margin-bottom: 15px; }
         #file-name { font-weight: bold; font-size: 1rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
         #transfer-mode { font-size: 0.75rem; color: var(--text-light); text-transform: uppercase; font-weight: bold; margin-top: 4px; letter-spacing: 1px; }
-        
+
         .progress-bg { width: 100%; height: 14px; background: #e2e8f0; border-radius: 8px; overflow: hidden; margin: 15px 0; }
         .progress-fill { width: 0%; height: 100%; background: linear-gradient(90deg, var(--blue), #4facfe); transition: width 0.1s linear; border-radius: 8px; }
         .stats-row { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-light); margin-bottom: 5px; }
@@ -64,10 +71,16 @@
 <div class="card" id="drop-zone">
     <div class="status-box"><span id="status" class="pill">Waiting to Connect...</span></div>
     <h2>🚀 SwiftDrop Pro</h2>
-    
+
     <div id="setup-ui">
         <input type="text" id="room-id" placeholder="Enter Room Code (e.g. 1234)" autocomplete="off">
-        <button class="btn btn-blue" onclick="startPeer()" id="connect-btn">🔗 Connect / Create Room</button>
+        <div class="btn-row">
+            <button class="btn btn-blue" onclick="createRoom()" id="create-btn">🟢 Create Room</button>
+            <button class="btn btn-blue" onclick="joinRoom()" id="join-btn">🔵 Join Room</button>
+        </div>
+        <div id="connecting-row">
+            <button class="link-btn" onclick="cancelConnecting()">✖ Cancel</button>
+        </div>
     </div>
 
     <div id="main-ui" style="display:none;">
@@ -81,44 +94,89 @@
             <div id="file-name">filename.mp4</div>
             <div id="transfer-mode">Initializing...</div>
         </div>
-        
+
         <div class="stats-row">
             <span>Progress: <span id="perc" class="stats-val text-blue">0%</span></span>
             <span id="size" class="stats-val">0.0 MB / 0.0 MB</span>
         </div>
-        
+
         <div class="progress-bg"><div id="progress-bar" class="progress-fill"></div></div>
-        
+
         <div class="stats-row" style="margin-top: 10px;">
             <span>Speed: <span id="speed" class="stats-val">-- MB/s</span></span>
             <span>ETA: <span id="eta" class="stats-val">--</span></span>
         </div>
-        
+
         <a id="dl-btn" class="btn btn-green" style="display:none;">💾 Save File</a>
         <button id="cancel-btn" class="btn btn-red" onclick="cancelTransfer()">✖ Cancel Transfer</button>
     </div>
 </div>
 
 <script>
-    let peer, conn;
+    let peer = null, conn = null;
     let transferActive = false;
     let receivedChunks = [];
     let fileMetadata = null;
     let receivedSize = 0;
-    let fileToSend = null; 
-    
-    const CHUNK_SIZE = 64 * 1024; // 64KB Safe WebRTC packet size
-    
-    // STRICT BUFFERS: Limits to 2MB to prevent mobile browsers / Safari from out-of-memory crashes
-    const SAFE_BUFFER_LIMIT = 2 * 1024 * 1024; 
-    const BUFFER_DRAIN_TARGET = 512 * 1024; 
+    let fileToSend = null;
+    let connectTimeoutId = null;
+
+    const CHUNK_SIZE = 128 * 1024; // 128KB - safe across modern browsers (incl. mobile Safari).
+                                    // If you see corrupted/incomplete files on a specific old
+                                    // device, drop this back to 64 * 1024.
+
+    // Backpressure window: how much unsent data we let pile up in the WebRTC
+    // buffer before pausing. Bigger window = fewer pauses = faster transfer,
+    // but uses more RAM while sending. 6MB is safe on virtually any modern
+    // phone/laptop.
+    const SAFE_BUFFER_LIMIT = 6 * 1024 * 1024;
+    const BUFFER_LOW_THRESHOLD = 1.5 * 1024 * 1024; // resume once buffer drains to this
 
     let lastStatsTime = 0, lastStatsBytes = 0, lastUIUpdateTime = 0;
+
+    // ---------------------------------------------------------------------
+    // ICE SERVERS (this is the #1 fix for "can't connect" / room problems)
+    // ---------------------------------------------------------------------
+    // STUN-only setups (what the old version had) only work when at least
+    // one side has an "open" NAT. The moment either device is on mobile
+    // data, hotel wifi, or behind a corporate/strict firewall, STUN alone
+    // can't punch through and the connection just hangs forever — that's
+    // almost certainly the "room connection problem" you're seeing.
+    //
+    // A TURN server fixes this by relaying traffic when a direct P2P path
+    // isn't possible. There's no truly free, no-signup public TURN server
+    // left that's safe to hardcode here (the old "openrelayproject" demo
+    // creds are now restricted to registered accounts to stop abuse) — but
+    // you can get free TURN credentials in ~2 minutes:
+    //   1. https://www.metered.ca/tools/openrelay/  -> sign up (free tier)
+    //   2. Dashboard -> copy your turn: URLs + username + credential
+    //   3. Paste them into the commented block below and uncomment it
+    // (Cloudflare Calls and Twilio also offer free/low-cost TURN if you'd
+    // rather use those.)
+    const ICE_SERVERS = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' },
+        { urls: 'stun:global.stun.twilio.com:3478' },
+
+        // --- Uncomment and fill in once you have free TURN credentials ---
+        // {
+        //     urls: "turn:standard.relay.metered.ca:80",
+        //     username: "YOUR_USERNAME",
+        //     credential: "YOUR_CREDENTIAL"
+        // },
+        // {
+        //     urls: "turn:standard.relay.metered.ca:443?transport=tcp",
+        //     username: "YOUR_USERNAME",
+        //     credential: "YOUR_CREDENTIAL"
+        // },
+    ];
+    const peerOptions = { config: { iceServers: ICE_SERVERS } };
 
     // --- DRAG AND DROP ---
     const dropZone = document.getElementById('drop-zone');
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => window.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false));
-    window.addEventListener('dragover', () => { if(conn && conn.open && !transferActive) dropZone.classList.add('dragover'); });
+    window.addEventListener('dragover', () => { if (conn && conn.open && !transferActive) dropZone.classList.add('dragover'); });
     window.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
     window.addEventListener('drop', (e) => {
         dropZone.classList.remove('dragover');
@@ -127,48 +185,139 @@
         if (droppedFiles.length > 0) { document.getElementById('file-input').files = droppedFiles; initiateSendFile(); }
     });
 
-    // --- CONNECTION SYSTEM ---
-    function startPeer() {
-        const roomInput = document.getElementById('room-id').value.trim();
-        if (!roomInput) return alert("Please enter a room code!");
+    // ---------------------------------------------------------------------
+    // CONNECTION SYSTEM
+    // ---------------------------------------------------------------------
+    // FIX: the old version used a single button that *guessed* whether to
+    // create or join a room based on which error came back. That's a race
+    // condition (two people clicking at once can both "win"), and it only
+    // ever handled one specific error type — anything else (room not
+    // found, signaling server hiccup, etc.) just left the UI hanging on
+    // "Connecting..." with no way out. Explicit Create/Join roles remove
+    // the ambiguity entirely, and every failure path now resets the UI
+    // with a clear message instead of hanging.
 
-        document.getElementById('connect-btn').disabled = true;
-        updateStatus("Connecting...", "waiting");
-        
-        const peerOptions = { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }] } };
+    function getRoomCode() {
+        return document.getElementById('room-id').value.trim();
+    }
 
-        peer = new Peer('swiftdrop-room-' + roomInput, peerOptions);
+    function setButtonsDisabled(disabled) {
+        document.getElementById('create-btn').disabled = disabled;
+        document.getElementById('join-btn').disabled = disabled;
+    }
+
+    function showConnecting(text) {
+        updateStatus(text, "waiting");
+        document.getElementById('connecting-row').style.display = 'block';
+    }
+
+    function cancelConnecting() {
+        resetToSetup(null, null);
+    }
+
+    function resetToSetup(message, type) {
+        if (connectTimeoutId) { clearTimeout(connectTimeoutId); connectTimeoutId = null; }
+        if (peer) { try { peer.destroy(); } catch (e) { /* already gone */ } }
+        peer = null;
+        conn = null;
+        document.getElementById('setup-ui').style.display = 'block';
+        document.getElementById('main-ui').style.display = 'none';
+        document.getElementById('connecting-row').style.display = 'none';
+        setButtonsDisabled(false);
+        if (message) updateStatus(message, type || "error");
+        else updateStatus("Waiting to Connect...", "");
+    }
+
+    function createRoom() {
+        const code = getRoomCode();
+        if (!code) return alert("Please enter a room code!");
+        if (peer) { try { peer.destroy(); } catch (e) {} }
+
+        setButtonsDisabled(true);
+        showConnecting("Creating room...");
+
+        peer = new Peer('swiftdrop-room-' + code, peerOptions);
 
         peer.on('open', () => {
-            updateStatus(`🟢 Room '${roomInput}' active. Waiting for peer...`, "waiting");
-            document.getElementById('setup-ui').style.display = 'none';
+            updateStatus(`🟢 Room '${code}' active. Waiting for peer...`, "waiting");
         });
 
+        peer.on('connection', (connection) => {
+            if (conn) { connection.close(); return; } // already paired, reject extras
+            setupConn(connection);
+        });
+
+        attachCommonPeerHandlers(code);
+    }
+
+    function joinRoom() {
+        const code = getRoomCode();
+        if (!code) return alert("Please enter a room code!");
+        if (peer) { try { peer.destroy(); } catch (e) {} }
+
+        setButtonsDisabled(true);
+        showConnecting("Looking for room...");
+
+        peer = new Peer(peerOptions); // anonymous peer
+
+        peer.on('open', () => {
+            const targetId = 'swiftdrop-room-' + code;
+            // serialization: 'none' bypasses PeerJS's own (buggy/slow) chunking
+            // so we can stream raw ArrayBuffers ourselves.
+            const connection = peer.connect(targetId, { serialization: 'none' });
+
+            // FIX: connection attempts used to be able to hang forever with
+            // no feedback if the room didn't exist or the network was
+            // blocking things. Now we time out after 15s and tell the user
+            // exactly what to check.
+            connectTimeoutId = setTimeout(() => {
+                if (!conn) {
+                    resetToSetup("🔴 Couldn't reach that room. Double-check the code and make sure it was created first.", "error");
+                }
+            }, 15000);
+
+            connection.on('open', () => setupConn(connection));
+            connection.on('error', (err) => console.error("Connection error:", err));
+        });
+
+        attachCommonPeerHandlers(code);
+    }
+
+    function attachCommonPeerHandlers(code) {
         peer.on('error', (err) => {
+            console.error("Peer error:", err);
             if (err.type === 'unavailable-id') {
-                updateStatus("🟡 Room found. Joining...", "waiting");
-                peer = new Peer(peerOptions); 
-                peer.on('open', () => {
-                    // CRITICAL FIX: "serialization: 'none'" bypasses PeerJS memory leak bugs on .mp4 files
-                    const connection = peer.connect('swiftdrop-room-' + roomInput, { serialization: 'none' });
-                    connection.on('open', () => setupConn(connection));
-                });
+                resetToSetup(`🔴 Room '${code}' is already taken. If you just left it, wait a few seconds and try again — or use Join Room instead.`, "error");
+            } else if (err.type === 'peer-unavailable') {
+                resetToSetup(`🔴 Room '${code}' not found. Make sure your friend created it first and you're both online.`, "error");
+            } else if (err.type === 'network' || err.type === 'socket-error' || err.type === 'server-error') {
+                resetToSetup("🔴 Network/server error. Check your internet connection and try again.", "error");
             } else {
-                updateStatus("🔴 Peer Error", "error");
-                document.getElementById('connect-btn').disabled = false;
-                alert("Error: " + err.message);
+                resetToSetup(`🔴 Connection error (${err.type || 'unknown'}). Please try again.`, "error");
             }
         });
 
-        peer.on('connection', (connection) => { if (conn) { connection.close(); return; } setupConn(connection); });
+        // FIX: if the connection to the signaling server drops (common on
+        // flaky wifi/mobile data) the old code never tried to recover —
+        // it would just sit there looking "connected" while nothing
+        // worked. Now we attempt an automatic reconnect.
+        peer.on('disconnected', () => {
+            if (!peer || peer.destroyed) return;
+            updateStatus("🟡 Connection to server lost, reconnecting...", "waiting");
+            peer.reconnect();
+        });
     }
 
     function setupConn(connection) {
         conn = connection;
+        if (connectTimeoutId) { clearTimeout(connectTimeoutId); connectTimeoutId = null; }
+
         updateStatus("🟢 Connected securely!", "online");
-        
+
+        document.getElementById('connecting-row').style.display = 'none';
         document.getElementById('setup-ui').style.display = 'none';
         document.getElementById('main-ui').style.display = 'block';
+        setButtonsDisabled(false);
 
         conn.on('data', handleIncomingData);
         conn.on('error', (err) => console.error("WebRTC Error:", err));
@@ -177,7 +326,6 @@
             resetTransferUI();
             document.getElementById('main-ui').style.display = 'none';
             document.getElementById('setup-ui').style.display = 'block';
-            document.getElementById('connect-btn').disabled = false;
             conn = null;
         });
     }
@@ -188,7 +336,7 @@
         if (typeof data === 'string') {
             try {
                 const parsed = JSON.parse(data);
-                
+
                 if (parsed.type === 'start') {
                     transferActive = true;
                     fileMetadata = parsed;
@@ -197,10 +345,9 @@
                     initStatsTracker();
                     showTransferUI(parsed.name, "Receiving...");
                     lockMainUI(true);
-                    
-                    // Reply back to start stream
+
                     conn.send(JSON.stringify({ type: 'ready' }));
-                } 
+                }
                 else if (parsed.type === 'ready') {
                     beginStreamingFile();
                 }
@@ -210,11 +357,11 @@
                     lockMainUI(false);
                 }
             } catch (e) { console.error("Data parse error", e); }
-        } 
-        // If data is Raw Binary (The actual video chunks)
+        }
+        // If data is Raw Binary (the actual file chunks)
         else {
             if (!transferActive) return;
-            
+
             receivedChunks.push(data);
             receivedSize += data.byteLength || data.size || data.length;
 
@@ -231,53 +378,75 @@
     function initiateSendFile() {
         const fileInput = document.getElementById('file-input');
         fileToSend = fileInput.files[0];
-        
+
         if (!fileToSend || !conn || !conn.open) return;
 
         transferActive = true;
         lockMainUI(true);
         initStatsTracker();
         showTransferUI(fileToSend.name, "Waiting for receiver...");
-        
-        // Convert metadata to string because we are bypassing the PeerJS serializer
+
         conn.send(JSON.stringify({ type: 'start', name: fileToSend.name, size: fileToSend.size, mime: fileToSend.type }));
+    }
+
+    // FIX: backpressure used to be a busy-wait poll (`while (bufferedAmount >
+    // limit) sleep 10ms`), which is both wasteful and slow to react. This
+    // now waits on the dataChannel's own 'bufferedamountlow' event (with a
+    // light poll as a safety net for older browsers), so sending resumes
+    // the moment there's room again instead of up to 10ms late every time.
+    function waitForBufferDrain(dc) {
+        return new Promise(resolve => {
+            if (dc.bufferedAmount <= SAFE_BUFFER_LIMIT) return resolve();
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                dc.removeEventListener('bufferedamountlow', onLow);
+                clearInterval(poll);
+                resolve();
+            };
+            dc.bufferedAmountLowThreshold = BUFFER_LOW_THRESHOLD;
+            const onLow = () => finish();
+            dc.addEventListener('bufferedamountlow', onLow);
+            const poll = setInterval(() => {
+                if (dc.bufferedAmount <= SAFE_BUFFER_LIMIT) finish();
+            }, 100);
+        });
     }
 
     async function beginStreamingFile() {
         if (!fileToSend || !transferActive) return;
-        
+
         document.getElementById('transfer-mode').innerText = "Sending...";
         let offset = 0;
         lastUIUpdateTime = Date.now();
 
         try {
             while (offset < fileToSend.size && transferActive && conn.open) {
-                
-                // CRITICAL FIX: Safe Buffer Check to prevent out-of-memory WebRTC crash
-                if (conn.dataChannel) {
-                    while (conn.dataChannel.bufferedAmount > SAFE_BUFFER_LIMIT && transferActive && conn.open) {
-                        await new Promise(resolve => setTimeout(resolve, 10)); // Rest for 10ms
-                    }
+
+                if (conn.dataChannel && conn.dataChannel.bufferedAmount > SAFE_BUFFER_LIMIT) {
+                    await waitForBufferDrain(conn.dataChannel);
+                    if (!transferActive || !conn.open) break;
                 }
 
                 const chunk = fileToSend.slice(offset, offset + CHUNK_SIZE);
                 const buffer = await chunk.arrayBuffer();
-                
-                if (!transferActive || !conn.open) break; 
 
-                conn.send(buffer); // Send naked ArrayBuffer straight into WebRTC
+                if (!transferActive || !conn.open) break;
+
+                conn.send(buffer); // raw ArrayBuffer straight into WebRTC
                 offset += buffer.byteLength;
-                
+
                 const now = Date.now();
                 if (now - lastUIUpdateTime > 50) {
                     updateProgressAndStats(offset, fileToSend.size);
                     lastUIUpdateTime = Date.now();
-                    await new Promise(r => setTimeout(r, 0)); // Prevent DOM freezing on huge files
+                    await new Promise(r => setTimeout(r, 0)); // keep DOM responsive on huge files
                 }
             }
 
             if (transferActive && offset >= fileToSend.size) {
-                updateProgressAndStats(fileToSend.size, fileToSend.size); 
+                updateProgressAndStats(fileToSend.size, fileToSend.size);
                 document.getElementById('cancel-btn').style.display = 'none';
                 document.getElementById('transfer-mode').innerText = "✅ Sent Successfully";
                 document.getElementById('speed').innerText = "--";
@@ -285,7 +454,7 @@
                 transferActive = false;
                 fileToSend = null;
                 document.getElementById('file-input').value = "";
-                setTimeout(() => { lockMainUI(false); }, 2000); 
+                setTimeout(() => { lockMainUI(false); }, 2000);
             }
         } catch (err) {
             console.error("Crash during stream:", err);
@@ -305,12 +474,12 @@
 
         const now = Date.now();
         const timeDiff = now - lastStatsTime;
-        
+
         if (timeDiff >= 500 || currentBytes === totalBytes) {
             const bytesDiff = currentBytes - lastStatsBytes;
-            const speedBps = (bytesDiff / timeDiff) * 1000; 
+            const speedBps = (bytesDiff / timeDiff) * 1000;
             document.getElementById('speed').innerText = `${formatBytes(speedBps)}/s`;
-            
+
             const remainingBytes = totalBytes - currentBytes;
             const etaSeconds = speedBps > 0 ? (remainingBytes / speedBps) : 0;
             document.getElementById('eta').innerText = formatTime(etaSeconds);
@@ -321,21 +490,21 @@
 
     function finishReceiving() {
         transferActive = false;
-        
+
         const blob = new Blob(receivedChunks, { type: fileMetadata.mime });
         const url = URL.createObjectURL(blob);
-        
+
         const dlBtn = document.getElementById('dl-btn');
         dlBtn.href = url;
         dlBtn.download = fileMetadata.name;
         dlBtn.style.display = 'block';
-        
+
         document.getElementById('cancel-btn').style.display = 'none';
         document.getElementById('transfer-mode').innerText = "✅ File Ready to Save";
         document.getElementById('speed').innerText = "--";
         document.getElementById('eta').innerText = "--";
-        
-        lockMainUI(false); 
+
+        lockMainUI(false);
         receivedChunks = []; // instantly clear huge RAM cache
         receivedSize = 0;
     }
@@ -344,15 +513,21 @@
         transferActive = false; fileToSend = null;
         if (conn && conn.open) conn.send(JSON.stringify({ type: 'cancel' }));
         resetTransferUI(); lockMainUI(false);
-        document.getElementById('file-input').value = ""; 
+        document.getElementById('file-input').value = "";
     }
 
-    function exitRoom() { if (confirm("Leave room?")) { if (peer) peer.destroy(); location.reload(); } }
+    function exitRoom() {
+        if (confirm("Leave room?")) {
+            if (connectTimeoutId) clearTimeout(connectTimeoutId);
+            if (peer) peer.destroy();
+            location.reload();
+        }
+    }
 
     window.addEventListener("beforeunload", (e) => { if (transferActive) { e.preventDefault(); e.returnValue = "Transfer in progress!"; } });
 
     function updateStatus(text, type) {
-        const el = document.getElementById('status'); el.innerText = text; el.className = "pill " + type;
+        const el = document.getElementById('status'); el.innerText = text; el.className = "pill " + (type || "");
     }
 
     function showTransferUI(name, mode) {
