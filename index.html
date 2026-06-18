@@ -1,169 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SwiftDrop P2P Pro</title>
+    <!-- PeerJS for WebRTC Connections -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root {
+            --blue: #1a7fe0;
+            --blue-hover: #1565c0;
+            --bg: #f0f4f8;
+            --text: #0f172a;
+            --text-light: #64748b;
+            --green: #10b981;
+            --green-hover: #059669;
+            --red: #ef4444;
+            --red-hover: #dc2626;
+            --card-bg: #ffffff;
+            --border: #e2e8f0;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .card {
+            background: var(--card-bg);
+            width: 90%;
+            max-width: 480px;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+            border: 1px solid var(--border);
+            box-sizing: border-box;
+        }
+
+        h2 {
+            text-align: center;
+            color: var(--blue);
+            margin-top: 0;
+            font-size: 1.6rem;
+            margin-bottom: 25px;
+        }
+        
+        .status-box { text-align: center; margin-bottom: 25px; }
+        .pill { 
+            padding: 8px 16px; 
+            border-radius: 20px; 
+            font-size: 0.85rem; 
+            font-weight: 600; 
+            background: #f1f5f9; 
+            color: var(--text-light);
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+        .pill.online { background: #d1fae5; color: var(--green); }
+        .pill.waiting { background: #fef3c7; color: #d97706; }
+        .pill.error { background: #fee2e2; color: var(--red); }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            font-size: 1rem;
+            box-sizing: border-box;
+            outline: none;
+            margin-bottom: 15px;
+            transition: border-color 0.2s;
+            text-align: center;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+        input[type="text"]:focus { border-color: var(--blue); }
+        
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-sizing: border-box;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .btn-blue { background: var(--blue); color: white; }
+        .btn-blue:hover:not(:disabled) { background: var(--blue-hover); }
+        
+        .btn-red { background: var(--red); color: white; margin-top: 10px; }
+        .btn-red:hover:not(:disabled) { background: var(--red-hover); }
+        
+        .btn-green { background: var(--green); color: white; text-decoration: none; margin-top: 15px; }
+        .btn-green:hover:not(:disabled) { background: var(--green-hover); }
+
+        .btn-exit { 
+            background: transparent; 
+            color: var(--text-light); 
+            border: 2px solid var(--border); 
+            margin-top: 15px; 
+        }
+        .btn-exit:hover:not(:disabled) { background: #f8fafc; color: var(--text); }
+
+        .transfer-box {
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            display: none;
+            margin-top: 25px;
+        }
+
+        .file-info {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        #file-name {
+            font-weight: bold;
+            font-size: 1rem;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--text);
+        }
+        #transfer-mode {
+            font-size: 0.75rem;
+            color: var(--text-light);
+            text-transform: uppercase;
+            font-weight: bold;
+            margin-top: 4px;
+            letter-spacing: 1px;
+        }
+        
+        .progress-bg {
+            width: 100%;
+            height: 14px;
+            background: #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        .progress-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, var(--blue), #4facfe);
+            transition: width 0.15s linear;
+            border-radius: 8px;
+        }
+        
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: var(--text-light);
+            margin-bottom: 5px;
+        }
+        .stats-val { font-weight: 600; color: var(--text); }
+        .text-blue { color: var(--blue); }
+
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="status-box"><span id="status" class="pill">Waiting to Connect...</span></div>
+    <h2>🚀 SwiftDrop Pro</h2>
+    
+    <!-- 1. ROOM SETUP UI -->
+    <div id="setup-ui">
+        <input type="text" id="room-id" placeholder="Enter Room Code (e.g. 1234)" autocomplete="off">
+        <button class="btn btn-blue" onclick="startPeer()" id="connect-btn">🔗 Connect / Create Room</button>
+    </div>
+
+    <!-- 2. MAIN LOBBY UI (Visible when 2 peers are connected) -->
+    <div id="main-ui" style="display:none;">
+        <input type="file" id="file-input" style="display:none" onchange="sendFile()">
+        <button class="btn btn-blue" id="select-file-btn" onclick="document.getElementById('file-input').click()">📤 Select & Send File</button>
+        <button class="btn btn-exit" id="exit-btn" onclick="exitRoom()">🚪 Exit Room</button>
+    </div>
+
+    <!-- 3. TRANSFER UI (Visible during file transfer) -->
+    <div id="transfer-ui" class="transfer-box">
+        <div class="file-info">
+            <div id="file-name">filename.mp4</div>
+            <div id="transfer-mode">Initializing...</div>
+        </div>
+        
+        <!-- Stats -->
+        <div class="stats-row">
+            <span>Progress: <span id="perc" class="stats-val text-blue">0%</span></span>
+            <span id="size" class="stats-val">0.0 MB / 0.0 MB</span>
+        </div>
+        
+        <div class="progress-bg"><div id="progress-bar" class="progress-fill"></div></div>
+        
+        <!-- Speed & ETA -->
+        <div class="stats-row" style="margin-top: 10px;">
+            <span>Speed: <span id="speed" class="stats-val">-- MB/s</span></span>
+            <span>ETA: <span id="eta" class="stats-val">--</span></span>
+        </div>
+        
+        <a id="dl-btn" class="btn btn-green" style="display:none;">💾 Save File</a>
+        <button id="cancel-btn" class="btn btn-red" onclick="cancelTransfer()">✖ Cancel Transfer</button>
+    </div>
+</div>
+
 <script>
+    // --- GLOBAL VARIABLES ---
     let peer, conn;
     let transferActive = false;
-    const CHUNK_SIZE = 16384 * 4; // 64KB
+    let receivedChunks = [];
+    let fileMetadata = null;
+    
+    // WebRTC Chunk size (64KB is universally optimal for WebRTC Data Channels)
+    const CHUNK_SIZE = 64 * 1024; 
 
+    // Stats tracking variables
+    let lastStatsTime = 0;
+    let lastStatsBytes = 0;
+    let uiUpdateInterval = 0;
+
+    // --- PEERJS CONNECTION LOGIC ---
     function startPeer() {
-        const room = document.getElementById('room-id').value;
-        if (!room) return alert("Enter code");
-        document.getElementById('status').innerText = "Connecting...";
+        const roomInput = document.getElementById('room-id').value.trim();
+        if (!roomInput) {
+            alert("Please enter a room code!");
+            return;
+        }
+
+        // Disable UI while connecting
+        document.getElementById('connect-btn').disabled = true;
+        updateStatus("Connecting to server...", "waiting");
         
-        peer = new Peer('sd-room-' + room);
+        // Attempt to create the room as the HOST
+        peer = new Peer('swiftdrop-room-' + roomInput);
 
         peer.on('open', () => {
-            // Room created, but NO ONE is here yet.
-            // Do NOT show the send button yet.
-            updateStatus("🟢 Room Active: Waiting for peer to join...", true);
+            // Room created successfully! Now we wait for a guest.
+            updateStatus(`🟢 Room '${roomInput}' created. Waiting for peer...`, "waiting");
             document.getElementById('setup-ui').style.display = 'none';
         });
 
         peer.on('error', (err) => {
             if (err.type === 'unavailable-id') {
-                // Room exists! Let's join as a client.
-                updateStatus("🟡 Joining room...", true);
-                peer = new Peer(); 
+                // Room already exists! That means we are the GUEST joining the host.
+                updateStatus("🟡 Room found. Joining...", "waiting");
+                peer = new Peer(); // Create guest peer with random ID
+                
                 peer.on('open', () => {
-                    const c = peer.connect('sd-room-' + room, {reliable: true});
-                    // Wait for connection to fully open before showing UI
-                    c.on('open', () => setupConn(c));
+                    const connection = peer.connect('swiftdrop-room-' + roomInput, { reliable: true });
+                    connection.on('open', () => setupConn(connection));
                 });
             } else {
-                updateStatus("🔴 Error: " + err.type, false);
+                updateStatus("🔴 Connection Error", "error");
+                document.getElementById('connect-btn').disabled = false;
+                alert("Error: " + err.message);
             }
         });
 
-        peer.on('connection', (c) => {
-            // A client just joined our room!
-            setupConn(c);
+        // If we are the host, this triggers when the guest connects to us
+        peer.on('connection', (connection) => {
+            if (conn) {
+                // Deny third person if already connected
+                connection.close(); 
+                return;
+            }
+            setupConn(connection);
         });
     }
 
-    function setupConn(c) {
-        conn = c;
-        updateStatus("🟢 Connected to Peer! Ready.", true);
+    // --- SETUP CONNECTION EVENTS ---
+    function setupConn(connection) {
+        conn = connection;
+        updateStatus("🟢 Connected securely to peer!", "online");
+        
         document.getElementById('setup-ui').style.display = 'none';
-        document.getElementById('main-ui').style.display = 'block'; // Show Send Button NOW
+        document.getElementById('main-ui').style.display = 'block';
 
-        let chunks = [];
-        let meta = null;
-
-        conn.on('data', (data) => {
-            if (data.type === 'start') {
-                transferActive = true;
-                meta = data;
-                chunks = [];
-                showTransferUI(data.name, "Receiving...");
-            } else if (data.type === 'chunk') {
-                if (!transferActive) return;
-                chunks.push(data.data);
-                
-                let receivedSize = chunks.length * CHUNK_SIZE;
-                let progress = (receivedSize / meta.size) * 100;
-                updateProgress(progress, receivedSize, meta.size);
-
-                if (receivedSize >= meta.size) {
-                    const blob = new Blob(chunks);
-                    const url = URL.createObjectURL(blob);
-                    const dl = document.getElementById('dl-btn');
-                    dl.href = url;
-                    dl.download = meta.name;
-                    dl.style.display = 'block';
-                    document.getElementById('cancel-btn').style.display = 'none';
-                    updateStatus("📦 File Received", true);
-                    transferActive = false;
-                }
-            } else if (data.type === 'cancel') {
-                transferActive = false;
-                document.getElementById('transfer-ui').style.display = 'none';
-                alert("The other person cancelled the transfer.");
-            }
-        });
+        conn.on('data', handleIncomingData);
 
         conn.on('close', () => {
-            updateStatus("🔴 Peer Left", false);
-            document.getElementById('transfer-ui').style.display = 'none';
+            updateStatus("🔴 Peer disconnected.", "error");
+            resetTransferUI();
             document.getElementById('main-ui').style.display = 'none';
+            document.getElementById('setup-ui').style.display = 'block';
+            document.getElementById('connect-btn').disabled = false;
+            conn = null;
         });
     }
 
+    // --- HANDLE INCOMING DATA (RECEIVER LOOP) ---
+    function handleIncomingData(data) {
+        // 1. Metadata received (Start transfer)
+        if (data.type === 'start') {
+            transferActive = true;
+            fileMetadata = data;
+            receivedChunks = [];
+            
+            initStatsTracker();
+            showTransferUI(data.name, "Receiving...");
+            lockMainUI(true);
+        } 
+        
+        // 2. File Chunks received
+        else if (data.type === 'chunk') {
+            if (!transferActive) return;
+            receivedChunks.push(data.data);
+            
+            let receivedSize = receivedChunks.length * CHUNK_SIZE;
+            if (receivedSize > fileMetadata.size) receivedSize = fileMetadata.size;
+
+            updateProgressAndStats(receivedSize, fileMetadata.size);
+
+            // Transfer Complete Logic
+            if (receivedSize >= fileMetadata.size) {
+                finishReceiving();
+            }
+        } 
+        
+        // 3. Transfer Cancelled by Sender
+        else if (data.type === 'cancel') {
+            alert("The sender cancelled the file transfer.");
+            resetTransferUI();
+            lockMainUI(false);
+        }
+    }
+
+    // --- SEND FILE LOGIC (SENDER LOOP) ---
     async function sendFile() {
         const fileInput = document.getElementById('file-input');
         const file = fileInput.files[0];
-        if (!file) return;
         
-        if (!conn || !conn.open) {
-            alert("Connection is not ready yet!");
-            return;
-        }
+        if (!file || !conn || !conn.open) return;
 
         transferActive = true;
+        lockMainUI(true);
+        initStatsTracker();
         showTransferUI(file.name, "Sending...");
         
-        conn.send({ type: 'start', name: file.name, size: file.size });
+        // Tell receiver to get ready
+        conn.send({ type: 'start', name: file.name, size: file.size, mime: file.type });
 
         let offset = 0;
+        
+        // Chunk reading and sending loop
         while (offset < file.size && transferActive) {
-            // CRITICAL: Prevent WebRTC buffer overflow
-            if (conn.dataChannel && conn.dataChannel.bufferedAmount > 1024 * 1024 * 2) { 
-                await new Promise(r => setTimeout(r, 50)); 
+            
+            // --- BUFFER OVERFLOW PROTECTION (CRITICAL FOR LARGE FILES) ---
+            // If WebRTC buffer gets larger than 2MB, pause for 50ms to let it drain
+            if (conn.dataChannel.bufferedAmount > 2 * 1024 * 1024) { 
+                await new Promise(resolve => setTimeout(resolve, 50)); 
                 continue; 
             }
 
             const chunk = file.slice(offset, offset + CHUNK_SIZE);
             const buffer = await chunk.arrayBuffer();
-            conn.send({ type: 'chunk', data: buffer });
             
-            offset += CHUNK_SIZE;
-            
-            let progress = (offset / file.size) * 100;
-            if (offset % (CHUNK_SIZE * 5) === 0 || offset >= file.size) {
-                updateProgress(progress, offset, file.size);
-            }
+            // Safety check: if user clicked cancel during await, stop sending
+            if (!transferActive) break; 
 
-            await new Promise(r => setTimeout(r, 0));
+            conn.send({ type: 'chunk', data: buffer });
+            offset += buffer.byteLength;
+            
+            updateProgressAndStats(offset, file.size);
+
+            // Yield to browser UI thread to prevent freezing
+            if (offset % (CHUNK_SIZE * 10) === 0) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
         }
 
-        if (transferActive) {
-            updateStatus("✅ Sent Successfully", true);
+        // Completion logic
+        if (transferActive && offset >= file.size) {
             document.getElementById('cancel-btn').style.display = 'none';
+            document.getElementById('transfer-mode').innerText = "✅ Sent Successfully";
+            document.getElementById('speed').innerText = "--";
+            document.getElementById('eta').innerText = "--";
             transferActive = false;
+            
+            setTimeout(() => { lockMainUI(false); }, 2000); // Unlock UI after 2 sec
         }
         
-        // Reset file input so user can send the same file again if needed
-        fileInput.value = "";
+        fileInput.value = ""; // Reset input so same file can be selected again
     }
 
+    // --- TRANSFER UI & STATS LOGIC ---
+    function initStatsTracker() {
+        lastStatsTime = Date.now();
+        lastStatsBytes = 0;
+    }
+
+    function updateProgressAndStats(currentBytes, totalBytes) {
+        // Update Progress Bar
+        let percent = (currentBytes / totalBytes) * 100;
+        document.getElementById('progress-bar').style.width = Math.min(percent, 100) + "%";
+        document.getElementById('perc').innerText = Math.floor(percent) + "%";
+        document.getElementById('size').innerText = `${formatBytes(currentBytes)} / ${formatBytes(totalBytes)}`;
+
+        // Throttle Speed & ETA calculations to twice a second (500ms) for stability
+        const now = Date.now();
+        const timeDiff = now - lastStatsTime;
+        
+        if (timeDiff >= 500 || currentBytes === totalBytes) {
+            const bytesDiff = currentBytes - lastStatsBytes;
+            const speedBps = (bytesDiff / timeDiff) * 1000; // Bytes per second
+            
+            document.getElementById('speed').innerText = `${formatBytes(speedBps)}/s`;
+            
+            const remainingBytes = totalBytes - currentBytes;
+            const etaSeconds = speedBps > 0 ? (remainingBytes / speedBps) : 0;
+            document.getElementById('eta').innerText = formatTime(etaSeconds);
+
+            lastStatsBytes = currentBytes;
+            lastStatsTime = now;
+        }
+    }
+
+    function finishReceiving() {
+        transferActive = false;
+        
+        // Assemble file chunks into a single Blob
+        const blob = new Blob(receivedChunks, { type: fileMetadata.mime });
+        const url = URL.createObjectURL(blob);
+        
+        // Setup download button
+        const dlBtn = document.getElementById('dl-btn');
+        dlBtn.href = url;
+        dlBtn.download = fileMetadata.name;
+        dlBtn.style.display = 'flex';
+        
+        // Update UI
+        document.getElementById('cancel-btn').style.display = 'none';
+        document.getElementById('transfer-mode').innerText = "✅ File Ready to Save";
+        document.getElementById('speed').innerText = "--";
+        document.getElementById('eta').innerText = "--";
+        
+        // Unlock main UI so they can send files back
+        lockMainUI(false); 
+        
+        // Free memory chunks
+        receivedChunks = []; 
+    }
+
+    // --- CANCELLATION & EXIT CONTROLS ---
     function cancelTransfer() {
         transferActive = false;
-        if (conn) conn.send({ type: 'cancel' });
-        document.getElementById('transfer-ui').style.display = 'none';
+        if (conn && conn.open) {
+            conn.send({ type: 'cancel' });
+        }
+        resetTransferUI();
+        lockMainUI(false);
         document.getElementById('file-input').value = ""; 
     }
 
     function exitRoom() {
-        if(peer) peer.destroy();
-        location.reload(); 
+        if (confirm("Are you sure you want to leave the room?")) {
+            if (peer) peer.destroy();
+            location.reload(); 
+        }
     }
 
-    function updateStatus(txt, isOnline) {
-        const s = document.getElementById('status');
-        s.innerText = txt;
-        s.className = isOnline ? "pill online" : "pill";
+    // --- UTILITY & UI FUNCTIONS ---
+    function updateStatus(text, type) {
+        const statusEl = document.getElementById('status');
+        statusEl.innerText = text;
+        statusEl.className = "pill " + type;
     }
 
     function showTransferUI(name, mode) {
         document.getElementById('transfer-ui').style.display = 'block';
         document.getElementById('cancel-btn').style.display = 'block';
+        document.getElementById('dl-btn').style.display = 'none';
         document.getElementById('file-name').innerText = name;
         document.getElementById('transfer-mode').innerText = mode;
-        document.getElementById('dl-btn').style.display = 'none';
         document.getElementById('progress-bar').style.width = "0%";
+        document.getElementById('speed').innerText = "Calculating...";
+        document.getElementById('eta').innerText = "Calculating...";
     }
 
-    function updateProgress(p, cur, tot) {
-        p = Math.min(p, 100);
-        document.getElementById('progress-bar').style.width = p + "%";
-        document.getElementById('perc').innerText = Math.round(p) + "%";
-        document.getElementById('size').innerText = (cur/1024/1024).toFixed(1) + "MB / " + (tot/1024/1024).toFixed(1) + "MB";
+    function resetTransferUI() {
+        transferActive = false;
+        document.getElementById('transfer-ui').style.display = 'none';
+        receivedChunks = [];
+    }
+
+    function lockMainUI(isLocked) {
+        document.getElementById('select-file-btn').disabled = isLocked;
+        document.getElementById('exit-btn').disabled = isLocked;
+    }
+
+    function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    function formatTime(seconds) {
+        if (!isFinite(seconds) || seconds < 0) return "--";
+        if (seconds < 1) return "< 1s";
+        
+        seconds = Math.round(seconds);
+        if (seconds < 60) return seconds + "s";
+        
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return m + "m " + s + "s";
     }
 </script>
+
+</body>
+</html>
