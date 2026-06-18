@@ -6,106 +6,180 @@
     <title>SwiftDrop P2P | Industrial Transfer</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        :root { --primary: #1a7fe0; --bg: #f0f7ff; --text: #0d1b2a; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-        .card { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 25px rgba(26,127,224,0.1); width: 90%; max-width: 450px; text-align: center; }
-        h1 { color: var(--primary); margin-bottom: 0.5rem; }
-        .peer-id-box { background: var(--bg); padding: 10px; border-radius: 10px; border: 1px solid #c8ddf0; font-weight: bold; margin: 1rem 0; cursor: pointer; }
-        input[type="text"] { width: 100%; padding: 12px; margin: 10px 0; border: 2px solid #c8ddf0; border-radius: 10px; box-sizing: border-box; }
-        .btn { background: var(--primary); color: white; border: none; padding: 15px 30px; border-radius: 50px; font-weight: bold; cursor: pointer; width: 100%; transition: 0.3s; font-size: 1rem; }
-        .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(26,127,224,0.3); }
-        .btn-receive { background: #00b96b; margin-top: 10px; }
-        #status { margin-top: 1rem; font-size: 0.9rem; color: #4a6080; }
-        .progress-container { width: 100%; background: #eee; border-radius: 10px; margin-top: 20px; display: none; }
-        .progress-bar { width: 0%; height: 10px; background: var(--primary); border-radius: 10px; transition: 0.1s; }
+        :root { --blue: #1a7fe0; --bg: #f0f7ff; --text: #0d1b2a; --green: #00b96b; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .container { background: white; width: 90%; max-width: 500px; padding: 2rem; border-radius: 24px; box-shadow: 0 15px 35px rgba(26,127,224,0.1); border: 1px solid #c8ddf0; }
+        h1 { color: var(--blue); text-align: center; margin-top: 0; }
+        .status-pill { display: inline-block; padding: 6px 14px; background: #e8f3fd; color: var(--blue); border-radius: 20px; font-size: 0.85rem; font-weight: bold; margin-bottom: 20px; }
+        .input-group { margin-bottom: 1.5rem; }
+        label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 0.9rem; color: #4a6080; }
+        input[type="text"] { width: 100%; padding: 12px; border: 2px solid #ddeeff; border-radius: 12px; font-size: 1rem; box-sizing: border-box; outline: none; transition: 0.3s; }
+        input[type="text"]:focus { border-color: var(--blue); }
+        .btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s; margin-bottom: 10px; }
+        .btn-blue { background: var(--blue); color: white; }
+        .btn-blue:disabled { background: #b0cfee; cursor: not-allowed; }
+        .progress-area { background: #f8fbff; border: 1px solid #ddeeff; padding: 15px; border-radius: 16px; margin-top: 20px; display: none; }
+        .bar-bg { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin: 10px 0; }
+        .bar-fill { width: 0%; height: 100%; background: var(--blue); transition: width 0.1s; }
+        .stats { display: flex; justify-content: space-between; font-size: 0.8rem; color: #4a6080; }
+        #download-link { display: none; margin-top: 15px; text-decoration: none; }
     </style>
 </head>
 <body>
 
-<div class="card">
+<div class="container">
+    <div style="text-align: center;"><span class="status-pill" id="conn-status">Initializing...</span></div>
     <h1>🚀 SwiftDrop P2P</h1>
-    <p>Direct Browser-to-Browser Transfer</p>
     
-    <div class="peer-id-box" id="my-id-display" onclick="copyId()">Initializing Peer Engine...</div>
-    <p style="font-size: 0.7rem;">Share this ID with the receiver</p>
-
-    <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-
-    <input type="text" id="peer-id-input" placeholder="Enter Receiver's ID">
-    <input type="file" id="file-input" style="display: none;">
-    <button class="btn" onclick="document.getElementById('file-input').click()">📁 SELECT & SEND</button>
-    
-    <div class="progress-container" id="prog-cont">
-        <div class="progress-bar" id="prog-bar"></div>
+    <div class="input-group">
+        <label>1. Set Room Code</label>
+        <input type="text" id="room-input" placeholder="Enter 4 digits (e.g. 5555)">
+        <button class="btn btn-blue" id="connect-btn" style="margin-top:10px;">Connect to Room</button>
     </div>
-    <div id="status">Ready for connection</div>
+
+    <div id="transfer-ui" style="display: none;">
+        <div class="input-group">
+            <label>2. Share Files</label>
+            <input type="file" id="file-input" style="display: none;">
+            <button class="btn btn-blue" onclick="document.getElementById('file-input').click()">📁 Select & Send</button>
+        </div>
+    </div>
+
+    <div class="progress-area" id="progress-area">
+        <div id="file-info" style="font-weight: bold; font-size: 0.9rem;">Filename.zip</div>
+        <div class="bar-bg"><div class="bar-fill" id="bar-fill"></div></div>
+        <div class="stats">
+            <span id="prog-percent">0%</span>
+            <span id="prog-size">0 / 0 MB</span>
+        </div>
+        <a id="download-link" class="btn btn-blue" style="background:var(--green); display:none; text-align:center;">⬇️ Download Ready</a>
+    </div>
 </div>
 
 <script>
-    const status = document.getElementById('status');
-    const myIdDisplay = document.getElementById('my-id-display');
-    const progCont = document.getElementById('prog-cont');
-    const progBar = document.getElementById('prog-bar');
-    
-    // Initialize PeerJS
-    const peer = new Peer();
+    const CHUNK_SIZE = 16384; // 16KB chunks for high stability
+    let peer = null;
+    let conn = null;
 
-    peer.on('open', (id) => {
-        myIdDisplay.innerText = id;
-        status.innerText = "Waiting for peer...";
-    });
+    const statusLabel = document.getElementById('conn-status');
+    const roomInput = document.getElementById('room-input');
+    const connectBtn = document.getElementById('connect-btn');
+    const transferUI = document.getElementById('transfer-ui');
+    const progressArea = document.getElementById('progress-area');
+    const barFill = document.getElementById('bar-fill');
+    const progPercent = document.getElementById('prog-percent');
+    const progSize = document.getElementById('prog-size');
+    const fileInfo = document.getElementById('file-info');
+    const downloadLink = document.getElementById('download-link');
 
-    // SENDER LOGIC
-    document.getElementById('file-input').onchange = (e) => {
-        const file = e.target.files[0];
-        const receiverId = document.getElementById('peer-id-input').value;
-        
-        if(!receiverId) return alert("Please enter the Receiver's ID first!");
+    connectBtn.onclick = () => {
+        const roomCode = roomInput.value;
+        if (!roomCode) return alert("Enter a code!");
 
-        status.innerText = "Connecting to peer...";
-        const conn = peer.connect(receiverId);
+        connectBtn.disabled = true;
+        statusLabel.innerText = "Setting up room...";
 
-        conn.on('open', () => {
-            status.innerText = "⚡ P2P Pipe Established. Sending...";
-            progCont.style.display = "block";
-            
-            // Send metadata then file
-            conn.send({
-                file: file,
-                fileName: file.name,
-                fileType: file.type
-            });
+        // Logic: Device A is Sender (-S), Device B is Receiver (-R)
+        // We try to be the Receiver first, if we can't, we are the Sender
+        peer = new Peer('sd-' + roomCode);
 
-            progBar.style.width = "100%";
-            status.innerText = "✅ Sent Successfully!";
+        peer.on('open', (id) => {
+            statusLabel.innerText = "Room Active: " + roomCode;
+            transferUI.style.display = "block";
+            connectBtn.style.display = "none";
+            roomInput.disabled = true;
+        });
+
+        peer.on('error', (err) => {
+            if (err.type === 'unavailable-id') {
+                // Room occupied? We try to connect to the occupant
+                statusLabel.innerText = "Connecting to Peer...";
+                setupConnection(peer.connect('sd-' + roomCode, { label: 'file-transfer', reliable: true }));
+            }
+        });
+
+        peer.on('connection', (c) => {
+            setupConnection(c);
         });
     };
 
-    // RECEIVER LOGIC
-    peer.on('connection', (conn) => {
-        status.innerText = "🔗 Peer connected! Incoming file...";
-        
-        conn.on('data', (data) => {
-            status.innerText = "📦 Data received! Creating download...";
-            
-            const blob = new Blob([data.file], { type: data.fileType });
-            const url = window.URL.createObjectURL(blob);
-            
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = data.fileName;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            
-            status.innerText = "✅ Download Started: " + data.fileName;
-        });
-    });
+    function setupConnection(c) {
+        conn = c;
+        statusLabel.innerText = "🟢 Connected to Peer";
+        statusLabel.style.background = "#e6f9f1";
+        statusLabel.style.color = "#00875a";
+        transferUI.style.display = "block";
 
-    function copyId() {
-        const id = myIdDisplay.innerText;
-        navigator.clipboard.writeText(id);
-        alert("ID Copied: " + id);
+        let receivedChunks = [];
+        let metadata = null;
+
+        conn.on('data', (data) => {
+            // Check if it's metadata or a chunk
+            if (data.type === 'metadata') {
+                metadata = data;
+                receivedChunks = [];
+                progressArea.style.display = "block";
+                fileInfo.innerText = "Receiving: " + data.name;
+                downloadLink.style.display = "none";
+            } else if (data.type === 'chunk') {
+                receivedChunks.push(data.buffer);
+                const progress = (receivedChunks.length / metadata.totalChunks) * 100;
+                updateProgress(progress, receivedChunks.length * CHUNK_SIZE, metadata.size);
+
+                if (receivedChunks.length === metadata.totalChunks) {
+                    const blob = new Blob(receivedChunks);
+                    const url = URL.createObjectURL(blob);
+                    downloadLink.href = url;
+                    downloadLink.download = metadata.name;
+                    downloadLink.style.display = "block";
+                    statusLabel.innerText = "📦 File Received";
+                }
+            }
+        });
+    }
+
+    document.getElementById('file-input').onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file || !conn) return;
+
+        progressArea.style.display = "block";
+        fileInfo.innerText = "Sending: " + file.name;
+        
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        
+        // Send Metadata
+        conn.send({
+            type: 'metadata',
+            name: file.name,
+            size: file.size,
+            totalChunks: totalChunks
+        });
+
+        // Chunk and Send
+        const buffer = await file.arrayBuffer();
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, file.size);
+            const chunk = buffer.slice(start, end);
+            
+            conn.send({
+                type: 'chunk',
+                buffer: chunk
+            });
+
+            if (i % 5 === 0) { // Update UI every 5 chunks to save CPU
+                const progress = ((i + 1) / totalChunks) * 100;
+                updateProgress(progress, end, file.size);
+            }
+        }
+        updateProgress(100, file.size, file.size);
+        statusLabel.innerText = "✅ Transfer Complete";
+    };
+
+    function updateProgress(percent, current, total) {
+        barFill.style.width = percent + "%";
+        progPercent.innerText = Math.round(percent) + "%";
+        progSize.innerText = (current / 1048576).toFixed(2) + " / " + (total / 1048576).toFixed(2) + " MB";
     }
 </script>
 
