@@ -1,158 +1,450 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Offline File Drop — direct laptop-to-laptop transfer</title>
-<meta name="description" content="Send files directly between two computers over a local hotspot, no internet required." />
-<meta name="theme-color" content="#0d1410" />
-<link rel="manifest" href="manifest.json" />
-<link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="icons/icon.svg" />
-<link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline P2P File Share</title>
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --success: #22c55e;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    .container { background-color: var(--card); border-radius: 12px; width: 100%; max-width: 550px; padding: 24px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3); }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; text-align: center; }
+    p.subtitle { text-align: center; color: var(--text-muted); font-size: 0.9rem; margin-bottom: 24px; }
+    .step { display: none; }
+    .step.active { display: block; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 1rem; margin-top: 10px; }
+    .btn-primary { background-color: var(--accent); color: white; }
+    .btn-primary:hover { background-color: var(--accent-hover); }
+    .btn-danger { background-color: var(--danger); color: white; }
+    .btn-secondary { background-color: #334155; color: white; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    textarea { width: 100%; height: 120px; background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; color: var(--text); padding: 10px; font-family: monospace; font-size: 0.8rem; resize: none; margin-top: 8px; }
+    label { font-size: 0.85rem; color: var(--text-muted); font-weight: 500; }
+    .box { background: #0f172a; padding: 12px; border-radius: 8px; margin-top: 12px; border: 1px solid #334155; }
+    .progress-container { margin-top: 20px; }
+    .progress-bar { width: 100%; height: 12px; background-color: #334155; border-radius: 6px; overflow: hidden; margin: 8px 0; }
+    .progress-fill { width: 0%; height: 100%; background-color: var(--success); transition: width 0.1s; }
+    .meta-info { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; }
+    .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; background: #334155; }
+    .status-connected { background-color: rgba(34, 197, 94, 0.2); color: var(--success); }
+    .file-input-wrapper { border: 2px dashed #334155; border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; position: relative; margin-top: 15px; }
+    .file-input-wrapper input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+    .hidden { display: none !important; }
+  </style>
 </head>
 <body>
 
-<div class="bg-grain" aria-hidden="true"></div>
+  <div class="container">
+    <h1>🌲 OffShare</h1>
+    <p class="subtitle">Offline Direct P2P File Sharing</p>
 
-<header class="topbar">
-  <div class="brand">
-    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
-      <circle cx="9" cy="16" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
-      <circle cx="23" cy="16" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
-      <line x1="15" y1="16" x2="17" y2="16" stroke="currentColor" stroke-width="2"/>
-    </svg>
-    <span>Offline File Drop</span>
-  </div>
-  <div class="status-pill" id="netStatus">
-    <span class="dot"></span>
-    <span id="netStatusText">Checking network…</span>
-  </div>
-</header>
-
-<main id="app">
-
-  <!-- HOME SCREEN -->
-  <section class="screen" id="screen-home" data-screen="home">
-    <div class="card hero-card">
-      <h1>Move files with no internet at all.</h1>
-      <p class="muted">
-        One laptop turns on its hotspot, the other connects to it. From there, this page links the two
-        directly — no server, no upload, no size limit. One side creates a room, the other joins with a
-        short code you read off the screen.
-      </p>
-      <div class="action-row">
-        <button class="btn btn-primary" id="btnGoCreate">Create room</button>
-        <button class="btn btn-secondary" id="btnGoJoin">Join room</button>
+    <!-- STEP 1: Choose Role -->
+    <div id="step-role" class="step active">
+      <p style="text-align: center; margin-bottom: 15px; font-size: 0.95rem;">Select your role to configure the offline direct link:</p>
+      <div class="grid-2">
+        <button class="btn btn-primary" onclick="initHost()">Host (Sender)</button>
+        <button class="btn btn-secondary" onclick="initJoiner()">Joiner (Receiver)</button>
       </div>
     </div>
 
-    <div class="card steps-card">
-      <h2>How this works offline</h2>
-      <ol class="steps">
-        <li><strong>Connect to the same network.</strong> Turn on a hotspot on one laptop, connect the other to it. No internet needed on either.</li>
-        <li><strong>Laptop A creates a room</strong> and gets a short connection code.</li>
-        <li><strong>Laptop B joins</strong> by typing in that code, and gets a reply code back.</li>
-        <li><strong>Laptop A finishes</strong> by entering the reply code. Now you're linked, device to device.</li>
-        <li><strong>Drag files in.</strong> They stream straight across — no size cap, no waiting room on a server.</li>
-      </ol>
+    <!-- STEP 2a: Host Configuration -->
+    <div id="step-host" class="step">
+      <h3>Host Setup</h3>
+      <div class="box">
+        <label>1. Copy this local connection code to the other laptop:</label>
+        <textarea id="host-sdp" readonly onclick="this.select()"></textarea>
+        <button class="btn btn-secondary" style="padding: 6px; font-size:0.85rem;" onclick="copyCode('host-sdp')">Copy Code</button>
+      </div>
+      <div class="box" style="margin-top: 15px;">
+        <label>2. Paste the answer code received from the other laptop:</label>
+        <textarea id="host-answer" placeholder="Paste joiner answer here..."></textarea>
+        <button class="btn btn-primary" onclick="connectHost()">Complete Connection</button>
+      </div>
+      <button class="btn btn-danger" onclick="resetApp()">Back</button>
     </div>
-  </section>
 
-  <!-- CREATE ROOM SCREEN -->
-  <section class="screen hidden" id="screen-create" data-screen="create">
-    <div class="card">
-      <button class="btn-link" data-back>← Back</button>
-      <h2>Create a room</h2>
+    <!-- STEP 2b: Joiner Configuration -->
+    <div id="step-joiner" class="step">
+      <h3>Joiner Setup</h3>
+      <div class="box">
+        <label>1. Paste the connection code from the host laptop:</label>
+        <textarea id="joiner-offer" placeholder="Paste host code here..." oninput="generateAnswer()"></textarea>
+      </div>
+      <div class="box id="answer-box" style="margin-top: 15px;">
+        <label>2. Copy this generated answer code and paste it back into the host laptop:</label>
+        <textarea id="joiner-sdp" readonly onclick="this.select()"></textarea>
+        <button class="btn btn-secondary" style="padding: 6px; font-size:0.85rem;" onclick="copyCode('joiner-sdp')">Copy Answer</button>
+      </div>
+      <button class="btn btn-danger" style="margin-top:15px;" onclick="resetApp()">Back</button>
+    </div>
 
-      <div id="createStep1">
-        <p class="muted">Generating your connection code…</p>
+    <!-- STEP 3: Connected Room -->
+    <div id="step-room" class="step">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <div>Status: <span class="status-badge status-connected">Connected</span></div>
+        <button class="btn btn-danger" style="margin: 0; width: auto; padding: 6px 12px; font-size:0.85rem;" onclick="leaveRoom()">Leave Room</button>
       </div>
 
-      <div id="createStep2" class="hidden">
-        <p class="muted">Read this code to the other laptop (or copy it across), and have them paste it into <strong>Join room</strong>.</p>
-        <label class="field-label" for="offerCodeOut">Your connection code</label>
-        <textarea id="offerCodeOut" class="code-box" readonly rows="5"></textarea>
-        <button class="btn btn-secondary btn-small" id="btnCopyOffer">Copy code</button>
-
-        <div class="divider"></div>
-
-        <p class="muted">Once they hand you back their reply code, paste it here to finish connecting.</p>
-        <label class="field-label" for="answerCodeIn">Their reply code</label>
-        <textarea id="answerCodeIn" class="code-box" rows="5" placeholder="Paste the reply code here…"></textarea>
-        <button class="btn btn-primary" id="btnFinishConnect">Connect</button>
-        <p class="error-text hidden" id="createError"></p>
-      </div>
-    </div>
-  </section>
-
-  <!-- JOIN ROOM SCREEN -->
-  <section class="screen hidden" id="screen-join" data-screen="join">
-    <div class="card">
-      <button class="btn-link" data-back>← Back</button>
-      <h2>Join a room</h2>
-      <p class="muted">Paste the connection code from the other laptop.</p>
-      <label class="field-label" for="offerCodeIn">Their connection code</label>
-      <textarea id="offerCodeIn" class="code-box" rows="5" placeholder="Paste the connection code here…"></textarea>
-      <button class="btn btn-primary" id="btnGenerateAnswer">Generate reply code</button>
-      <p class="error-text hidden" id="joinError"></p>
-
-      <div id="joinStep2" class="hidden">
-        <div class="divider"></div>
-        <p class="muted">Send this reply code back to them, then wait — the room opens automatically once they enter it.</p>
-        <label class="field-label" for="answerCodeOut">Your reply code</label>
-        <textarea id="answerCodeOut" class="code-box" readonly rows="5"></textarea>
-        <button class="btn btn-secondary btn-small" id="btnCopyAnswer">Copy code</button>
-        <p class="muted spinner-line"><span class="spinner"></span> Waiting for them to connect…</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ROOM SCREEN -->
-  <section class="screen hidden" id="screen-room" data-screen="room">
-    <div class="room-header">
-      <div class="link-indicator" id="linkIndicator">
-        <svg viewBox="0 0 32 32" aria-hidden="true">
-          <circle cx="9" cy="16" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
-          <circle cx="23" cy="16" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
-          <line class="link-line" x1="15" y1="16" x2="17" y2="16" stroke="currentColor" stroke-width="2"/>
-        </svg>
-        <span id="linkLabel">Connected</span>
-      </div>
-      <button class="btn btn-danger btn-small" id="btnLeaveRoom">Leave room</button>
-    </div>
-
-    <div class="card dropzone" id="dropzone">
-      <input type="file" id="fileInput" multiple hidden />
-      <svg viewBox="0 0 48 48" class="drop-icon" aria-hidden="true">
-        <path d="M24 6v24M24 6l-8 8M24 6l8 8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M8 32v6a2 2 0 0 0 2 2h28a2 2 0 0 0 2-2v-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-      </svg>
-      <p>Drag files here, or</p>
-      <button class="btn btn-primary btn-small" id="btnChooseFiles">Choose files</button>
-      <p class="muted small">No size limit — large files stream straight to disk.</p>
-    </div>
-
-    <div class="transfers-grid">
-      <div class="card transfer-col">
-        <h3>Sending</h3>
-        <div id="outgoingList" class="transfer-list">
-          <p class="empty-hint">Files you send will appear here.</p>
+      <!-- File Select -->
+      <div id="share-controls">
+        <div class="file-input-wrapper">
+          <p id="file-label">Drag & drop or click to choose file</p>
+          <input type="file" id="file-selector" onchange="fileSelected()">
         </div>
+        <button id="send-btn" class="btn btn-primary hidden" onclick="startSendingFile()">Transfer File</button>
       </div>
-      <div class="card transfer-col">
-        <h3>Receiving</h3>
-        <div id="incomingList" class="transfer-list">
-          <p class="empty-hint">Incoming files will appear here.</p>
+
+      <!-- Transfer Progress Block -->
+      <div id="progress-block" class="box hidden">
+        <h4 id="transfer-title">Transferring File</h4>
+        <div class="progress-bar">
+          <div id="progress-fill" class="progress-fill"></div>
         </div>
+        <div class="meta-info">
+          <span id="transfer-percent">0%</span>
+          <span id="transfer-speed">Speed: 0 KB/s</span>
+          <span id="transfer-eta">ETA: --</span>
+        </div>
+        <div class="meta-info" style="margin-top: 8px;">
+          <span id="transfer-stats">0 MB / 0 MB</span>
+        </div>
+        <button class="btn btn-danger" style="margin-top: 15px; padding: 8px;" onclick="cancelTransfer()">Cancel File Transfer</button>
+      </div>
+
+      <!-- Complete Download Section -->
+      <div id="download-block" class="box hidden">
+        <p style="color: var(--success); font-weight: bold; text-align: center;">File Received Successfully!</p>
+        <a id="download-link" class="btn btn-primary" style="text-decoration: none;" download>Download File</a>
       </div>
     </div>
-  </section>
+  </div>
 
-</main>
+  <script>
+    // Offline Service Worker Registration
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(err => console.log("SW failed", err));
+      });
+    }
 
-<div id="toast" class="toast hidden"></div>
+    let pc;
+    let dataChannel;
+    let selectedFile;
+    let transferCancelled = false;
+    let receivedChunks = [];
+    let receivedBytes = 0;
+    let incomingFileMeta = null;
+    let speedTimer;
+    let speedBytesLast = 0;
+    let speedTimeLast = 0;
+    let transferSpeed = 0;
 
-<script src="app.js" defer></script>
+    // WebRTC Configuration (No servers needed for local Offline Hotspot transfers)
+    const webrtcConfig = { iceServers: [] };
+
+    function showStep(stepId) {
+      document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+      document.getElementById(stepId).classList.add('active');
+    }
+
+    function resetApp() {
+      if (pc) pc.close();
+      showStep('step-role');
+    }
+
+    // HOST Setup Logic
+    function initHost() {
+      showStep('step-host');
+      pc = new RTCPeerConnection(webrtcConfig);
+      
+      dataChannel = pc.createDataChannel("fileTransfer", { ordered: true });
+      setupDataChannel();
+
+      pc.onicecandidate = (e) => {
+        if (!e.candidate) {
+          // All candidates gathered, finalize SDP Code
+          document.getElementById('host-sdp').value = btoa(JSON.stringify(pc.localDescription));
+        }
+      };
+
+      pc.createOffer().then(offer => pc.setLocalDescription(offer));
+    }
+
+    function connectHost() {
+      const answerVal = document.getElementById('host-answer').value.trim();
+      if (!answerVal) return alert("Please paste the joiner's code first.");
+      try {
+        const answerDesc = JSON.parse(atob(answerVal));
+        pc.setRemoteDescription(new RTCSessionDescription(answerDesc));
+      } catch (err) {
+        alert("Invalid code format. Make sure you copied it correctly.");
+      }
+    }
+
+    // JOINER Setup Logic
+    function initJoiner() {
+      showStep('step-joiner');
+      document.getElementById('joiner-offer').value = '';
+      document.getElementById('joiner-sdp').value = '';
+      pc = new RTCPeerConnection(webrtcConfig);
+      
+      pc.ondatachannel = (e) => {
+        dataChannel = e.channel;
+        setupDataChannel();
+      };
+    }
+
+    function generateAnswer() {
+      const offerVal = document.getElementById('joiner-offer').value.trim();
+      if (!offerVal) return;
+      try {
+        const offerDesc = JSON.parse(atob(offerVal));
+        pc.setRemoteDescription(new RTCSessionDescription(offerDesc))
+          .then(() => pc.createAnswer())
+          .then(answer => pc.setLocalDescription(answer))
+          .then(() => {
+            pc.onicecandidate = (e) => {
+              if (!e.candidate) {
+                // All candidates gathered, finalize SDP Code
+                document.getElementById('joiner-sdp').value = btoa(JSON.stringify(pc.localDescription));
+              }
+            };
+          });
+      } catch (err) {
+        alert("Invalid code. Please re-copy the code from the host.");
+      }
+    }
+
+    // Peer Connection Management
+    function setupDataChannel() {
+      dataChannel.binaryType = 'arraybuffer';
+      
+      dataChannel.onopen = () => {
+        showStep('step-room');
+      };
+
+      dataChannel.onmessage = (event) => {
+        if (typeof event.data === 'string') {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'meta') {
+            // Incoming file header
+            incomingFileMeta = msg;
+            receivedChunks = [];
+            receivedBytes = 0;
+            transferCancelled = false;
+            initTransferProgressUI(msg.name, msg.size, "Receiving");
+          } else if (msg.type === 'cancel') {
+            handleTransferAborted("Transfer canceled by peer.");
+          } else if (msg.type === 'done') {
+            finishReceiving();
+          }
+        } else {
+          // Incoming Binary Chunks
+          if (transferCancelled) return;
+          receivedChunks.push(event.data);
+          receivedBytes += event.data.byteLength;
+          updateProgressUI(receivedBytes, incomingFileMeta.size);
+        }
+      };
+
+      dataChannel.onclose = () => {
+        leaveRoom();
+      };
+    }
+
+    // File Selection Handles
+    function fileSelected() {
+      const fileInput = document.getElementById('file-selector');
+      if (fileInput.files.length > 0) {
+        selectedFile = fileInput.files[0];
+        document.getElementById('file-label').innerText = `${selectedFile.name} (${formatBytes(selectedFile.size)})`;
+        document.getElementById('send-btn').classList.remove('hidden');
+      }
+    }
+
+    // Chunk Streaming with Backpressure Support (Handles files of any size)
+    async function startSendingFile() {
+      if (!selectedFile) return;
+      document.getElementById('share-controls').classList.add('hidden');
+      initTransferProgressUI(selectedFile.name, selectedFile.size, "Sending");
+      transferCancelled = false;
+
+      // Send Metadata
+      dataChannel.send(JSON.stringify({
+        type: 'meta',
+        name: selectedFile.name,
+        size: selectedFile.size
+      }));
+
+      const CHUNK_SIZE = 64 * 1024; // Safe 64KB chunk sizes
+      let offset = 0;
+      speedBytesLast = 0;
+      speedTimeLast = Date.now();
+      
+      speedTimer = setInterval(() => {
+        calculateSpeed(offset, selectedFile.size);
+      }, 1000);
+
+      try {
+        while (offset < selectedFile.size && !transferCancelled) {
+          // Backpressure mitigation: wait if channel buffer threshold exceeded
+          if (dataChannel.bufferedAmount > 4 * 1024 * 1024) { // 4MB buffer limit
+            await new Promise(resolve => {
+              dataChannel.onbufferedamountlow = () => {
+                dataChannel.onbufferedamountlow = null;
+                resolve();
+              };
+            });
+          }
+
+          const chunk = selectedFile.slice(offset, offset + CHUNK_SIZE);
+          const buffer = await chunk.arrayBuffer();
+          dataChannel.send(buffer);
+          offset += chunk.size;
+          updateProgressUI(offset, selectedFile.size);
+        }
+
+        clearInterval(speedTimer);
+        
+        if (!transferCancelled) {
+          dataChannel.send(JSON.stringify({ type: 'done' }));
+          resetTransferView();
+        }
+      } catch (err) {
+        console.error(err);
+        handleTransferAborted("Error during file transfer.");
+      }
+    }
+
+    function finishReceiving() {
+      clearInterval(speedTimer);
+      const fileBlob = new Blob(receivedChunks);
+      const downloadLink = document.getElementById('download-link');
+      downloadLink.href = URL.createObjectURL(fileBlob);
+      downloadLink.download = incomingFileMeta.name;
+      
+      document.getElementById('progress-block').classList.add('hidden');
+      document.getElementById('download-block').classList.remove('hidden');
+    }
+
+    // Live Math Calculators
+    function calculateSpeed(currentBytes, totalBytes) {
+      const now = Date.now();
+      const elapsed = (now - speedTimeLast) / 1000;
+      if (elapsed <= 0) return;
+
+      const bytesDelivered = currentBytes - speedBytesLast;
+      transferSpeed = bytesDelivered / elapsed; // bytes/sec
+
+      speedBytesLast = currentBytes;
+      speedTimeLast = now;
+
+      document.getElementById('transfer-speed').innerText = `Speed: ${formatBytes(transferSpeed)}/s`;
+
+      if (transferSpeed > 0) {
+        const remainingBytes = totalBytes - currentBytes;
+        const etaSeconds = Math.round(remainingBytes / transferSpeed);
+        document.getElementById('transfer-eta').innerText = `ETA: ${formatTime(etaSeconds)}`;
+      } else {
+        document.getElementById('transfer-eta').innerText = `ETA: --`;
+      }
+    }
+
+    // UI State Triggers
+    function initTransferProgressUI(name, size, mode) {
+      document.getElementById('transfer-title').innerText = `${mode}: ${name}`;
+      document.getElementById('progress-block').classList.remove('hidden');
+      document.getElementById('share-controls').classList.add('hidden');
+      document.getElementById('download-block').classList.add('hidden');
+      
+      // Start Speed Tracking for Receiver
+      if (mode === "Receiving") {
+        speedBytesLast = 0;
+        speedTimeLast = Date.now();
+        speedTimer = setInterval(() => {
+          calculateSpeed(receivedBytes, size);
+        }, 1000);
+      }
+    }
+
+    function updateProgressUI(current, total) {
+      const percent = Math.round((current / total) * 100);
+      document.getElementById('progress-fill').style.width = `${percent}%`;
+      document.getElementById('transfer-percent').innerText = `${percent}%`;
+      document.getElementById('transfer-stats').innerText = `${formatBytes(current)} / ${formatBytes(total)}`;
+    }
+
+    function cancelTransfer() {
+      transferCancelled = true;
+      clearInterval(speedTimer);
+      try {
+        dataChannel.send(JSON.stringify({ type: 'cancel' }));
+      } catch (e) {}
+      handleTransferAborted("Transfer canceled.");
+    }
+
+    function handleTransferAborted(reason) {
+      clearInterval(speedTimer);
+      alert(reason);
+      resetTransferView();
+    }
+
+    function resetTransferView() {
+      document.getElementById('progress-block').classList.add('hidden');
+      document.getElementById('share-controls').classList.remove('hidden');
+      document.getElementById('send-btn').classList.add('hidden');
+      document.getElementById('file-label').innerText = "Drag & drop or click to choose file";
+      document.getElementById('file-selector').value = "";
+      selectedFile = null;
+    }
+
+    function leaveRoom() {
+      clearInterval(speedTimer);
+      if (dataChannel) dataChannel.close();
+      if (pc) pc.close();
+      resetTransferView();
+      document.getElementById('download-block').classList.add('hidden');
+      showStep('step-role');
+    }
+
+    // Helper utilities
+    function copyCode(id) {
+      const el = document.getElementById(id);
+      el.select();
+      document.execCommand('copy');
+      alert("Code copied to clipboard!");
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function formatTime(seconds) {
+      if (seconds === Infinity || isNaN(seconds)) return '--';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      return [
+        h > 0 ? h + 'h' : null,
+        m > 0 ? m + 'm' : null,
+        s + 's'
+      ].filter(Boolean).join(' ');
+    }
+  </script>
 </body>
 </html>
