@@ -1,72 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SwiftDrop P2P Pro</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <style>
-        :root { --blue: #1a7fe0; --bg: #f8fbff; --text: #0d1b2a; --green: #00b96b; --red: #e03e3e; }
-        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-        .card { background: white; width: 90%; max-width: 450px; padding: 25px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 1px solid #e2e8f0; }
-        h2 { text-align: center; color: var(--blue); margin-top: 0; }
-        
-        .status-box { text-align: center; margin-bottom: 20px; }
-        .pill { padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; background: #eee; }
-        .online { background: #e6f9f1; color: var(--green); }
-        
-        input { width: 100%; padding: 14px; border: 2px solid #edf2f7; border-radius: 12px; font-size: 1rem; box-sizing: border-box; outline: none; margin-bottom: 10px; }
-        input:focus { border-color: var(--blue); }
-        
-        .btn { width: 100%; padding: 15px; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s; margin-top: 10px; }
-        .btn-blue { background: var(--blue); color: white; }
-        .btn-red { background: white; color: var(--red); border: 2px solid #fecaca; }
-        .btn-exit { background: transparent; color: #64748b; border: 1.5px solid #e2e8f0; font-size: 0.8rem; margin-top: 20px;}
-        .btn:active { transform: scale(0.98); }
-
-        .transfer-box { background: #f1f5f9; padding: 15px; border-radius: 16px; display: none; margin-top: 20px; }
-        .progress-bg { width: 100%; height: 12px; background: #cbd5e1; border-radius: 6px; overflow: hidden; margin: 10px 0; border: 1px solid #cbd5e1; }
-        .progress-fill { width: 0%; height: 100%; background: var(--blue); transition: width 0.1s; }
-        
-        #dl-btn { background: var(--green); color: white; text-decoration: none; display: none; text-align: center; }
-    </style>
-</head>
-<body>
-
-<div class="card">
-    <div class="status-box"><span id="status" class="pill">Waiting for Room Code...</span></div>
-    <h2>🚀 SwiftDrop P2P</h2>
-    
-    <!-- ROOM SETUP -->
-    <div id="setup-ui">
-        <input type="text" id="room-id" placeholder="Enter Room Code (e.g. 1234)">
-        <button class="btn btn-blue" onclick="startPeer()">Connect to Room</button>
-    </div>
-
-    <!-- MAIN BUTTONS -->
-    <div id="main-ui" style="display:none;">
-        <input type="file" id="file-input" style="display:none" onchange="sendFile()">
-        <button class="btn btn-blue" onclick="document.getElementById('file-input').click()">📤 SELECT & SEND FILE</button>
-        <button class="btn btn-exit" onclick="exitRoom()">🚪 EXIT ROOM</button>
-    </div>
-
-    <!-- PROGRESS AREA (VISIBLE ON BOTH SIDES) -->
-    <div id="transfer-ui" class="transfer-box">
-        <div id="file-name" style="font-weight:bold; font-size:0.9rem; margin-bottom:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
-        <div id="transfer-mode" style="font-size:0.7rem; color:#64748b; text-transform:uppercase; font-weight:bold;">Initializing...</div>
-        
-        <div class="progress-bg"><div id="progress-bar" class="progress-fill"></div></div>
-        
-        <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:10px;">
-            <span id="perc" style="font-weight:bold; color:var(--blue);">0%</span>
-            <span id="size">0MB / 0MB</span>
-        </div>
-        
-        <a id="dl-btn" class="btn">💾 SAVE RECEIVED FILE</a>
-        <button id="cancel-btn" class="btn btn-red" onclick="cancelTransfer()">✖ CANCEL</button>
-    </div>
-</div>
-
 <script>
     let peer, conn;
     let transferActive = false;
@@ -80,29 +11,38 @@
         peer = new Peer('sd-room-' + room);
 
         peer.on('open', () => {
-            updateStatus("🟢 Room Active: " + room, true);
+            // Room created, but NO ONE is here yet.
+            // Do NOT show the send button yet.
+            updateStatus("🟢 Room Active: Waiting for peer to join...", true);
             document.getElementById('setup-ui').style.display = 'none';
-            document.getElementById('main-ui').style.display = 'block';
         });
 
         peer.on('error', (err) => {
             if (err.type === 'unavailable-id') {
+                // Room exists! Let's join as a client.
+                updateStatus("🟡 Joining room...", true);
                 peer = new Peer(); 
-                setTimeout(() => {
+                peer.on('open', () => {
                     const c = peer.connect('sd-room-' + room, {reliable: true});
-                    setupConn(c);
-                }, 500);
+                    // Wait for connection to fully open before showing UI
+                    c.on('open', () => setupConn(c));
+                });
+            } else {
+                updateStatus("🔴 Error: " + err.type, false);
             }
         });
 
-        peer.on('connection', setupConn);
+        peer.on('connection', (c) => {
+            // A client just joined our room!
+            setupConn(c);
+        });
     }
 
     function setupConn(c) {
         conn = c;
-        updateStatus("🟢 Connected to Peer", true);
+        updateStatus("🟢 Connected to Peer! Ready.", true);
         document.getElementById('setup-ui').style.display = 'none';
-        document.getElementById('main-ui').style.display = 'block';
+        document.getElementById('main-ui').style.display = 'block'; // Show Send Button NOW
 
         let chunks = [];
         let meta = null;
@@ -117,7 +57,6 @@
                 if (!transferActive) return;
                 chunks.push(data.data);
                 
-                // UPDATE RECEIVER PROGRESS BAR
                 let receivedSize = chunks.length * CHUNK_SIZE;
                 let progress = (receivedSize / meta.size) * 100;
                 updateProgress(progress, receivedSize, meta.size);
@@ -143,12 +82,19 @@
         conn.on('close', () => {
             updateStatus("🔴 Peer Left", false);
             document.getElementById('transfer-ui').style.display = 'none';
+            document.getElementById('main-ui').style.display = 'none';
         });
     }
 
     async function sendFile() {
-        const file = document.getElementById('file-input').files[0];
-        if (!file || !conn) return;
+        const fileInput = document.getElementById('file-input');
+        const file = fileInput.files[0];
+        if (!file) return;
+        
+        if (!conn || !conn.open) {
+            alert("Connection is not ready yet!");
+            return;
+        }
 
         transferActive = true;
         showTransferUI(file.name, "Sending...");
@@ -157,19 +103,23 @@
 
         let offset = 0;
         while (offset < file.size && transferActive) {
+            // CRITICAL: Prevent WebRTC buffer overflow
+            if (conn.dataChannel && conn.dataChannel.bufferedAmount > 1024 * 1024 * 2) { 
+                await new Promise(r => setTimeout(r, 50)); 
+                continue; 
+            }
+
             const chunk = file.slice(offset, offset + CHUNK_SIZE);
             const buffer = await chunk.arrayBuffer();
             conn.send({ type: 'chunk', data: buffer });
             
             offset += CHUNK_SIZE;
             
-            // UPDATE SENDER PROGRESS BAR
             let progress = (offset / file.size) * 100;
             if (offset % (CHUNK_SIZE * 5) === 0 || offset >= file.size) {
                 updateProgress(progress, offset, file.size);
             }
 
-            // Yield to browser to keep UI alive
             await new Promise(r => setTimeout(r, 0));
         }
 
@@ -178,6 +128,9 @@
             document.getElementById('cancel-btn').style.display = 'none';
             transferActive = false;
         }
+        
+        // Reset file input so user can send the same file again if needed
+        fileInput.value = "";
     }
 
     function cancelTransfer() {
@@ -214,6 +167,3 @@
         document.getElementById('size').innerText = (cur/1024/1024).toFixed(1) + "MB / " + (tot/1024/1024).toFixed(1) + "MB";
     }
 </script>
-
-</body>
-</html>
