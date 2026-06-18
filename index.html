@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SwiftDrop Pro - Robust Edition</title>
+    <title>SwiftDrop Pro - Ultra Stable Edition</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root {
@@ -20,84 +20,40 @@
             --border: #e2e8f0;
         }
 
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            margin: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-        }
-
-        .card {
-            background: var(--card-bg);
-            width: 90%;
-            max-width: 480px;
-            padding: 30px;
-            border-radius: 24px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
-            border: 1px solid var(--border);
-            box-sizing: border-box;
-            transition: border 0.3s ease;
-        }
-
-        /* Drag & Drop Visuals */
-        .card.dragover {
-            border: 3px dashed var(--blue);
-            background: #eff6ff;
-        }
-
+        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .card { background: var(--card-bg); width: 90%; max-width: 480px; padding: 30px; border-radius: 24px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05); border: 1px solid var(--border); box-sizing: border-box; transition: border 0.3s ease; }
+        .card.dragover { border: 3px dashed var(--blue); background: #eff6ff; }
+        
         h2 { text-align: center; color: var(--blue); margin-top: 0; font-size: 1.6rem; margin-bottom: 25px; }
         
         .status-box { text-align: center; margin-bottom: 25px; }
-        .pill { 
-            padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; 
-            background: #f1f5f9; color: var(--text-light); display: inline-block; transition: all 0.3s ease;
-        }
+        .pill { padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; background: #f1f5f9; color: var(--text-light); display: inline-block; transition: all 0.3s ease; }
         .pill.online { background: #d1fae5; color: var(--green); }
         .pill.waiting { background: #fef3c7; color: #d97706; }
         .pill.error { background: #fee2e2; color: var(--red); }
         
-        input[type="text"] {
-            width: 100%; padding: 15px; border: 2px solid var(--border); border-radius: 12px;
-            font-size: 1rem; box-sizing: border-box; outline: none; margin-bottom: 15px;
-            text-align: center; font-weight: bold; letter-spacing: 2px;
-        }
+        input[type="text"] { width: 100%; padding: 15px; border: 2px solid var(--border); border-radius: 12px; font-size: 1rem; box-sizing: border-box; outline: none; margin-bottom: 15px; text-align: center; font-weight: bold; letter-spacing: 2px; }
         input[type="text"]:focus { border-color: var(--blue); }
         
-        .btn {
-            width: 100%; padding: 16px; border: none; border-radius: 12px; font-weight: bold;
-            font-size: 1rem; cursor: pointer; transition: all 0.2s; box-sizing: border-box;
-        }
+        .btn { width: 100%; padding: 16px; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: all 0.2s; box-sizing: border-box; }
         .btn:active { transform: scale(0.98); }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
         .btn-blue { background: var(--blue); color: white; }
         .btn-blue:hover:not(:disabled) { background: var(--blue-hover); }
-        
         .btn-red { background: var(--red); color: white; margin-top: 10px; }
         .btn-red:hover:not(:disabled) { background: var(--red-hover); }
-        
         .btn-green { background: var(--green); color: white; text-decoration: none; margin-top: 15px; display: block; text-align: center; }
         .btn-green:hover:not(:disabled) { background: var(--green-hover); }
-
         .btn-exit { background: transparent; color: var(--text-light); border: 2px solid var(--border); margin-top: 15px; }
         .btn-exit:hover:not(:disabled) { background: #f8fafc; color: var(--text); }
 
-        .transfer-box {
-            background: #f8fafc; padding: 20px; border-radius: 16px; border: 1px solid var(--border);
-            display: none; margin-top: 25px;
-        }
-
+        .transfer-box { background: #f8fafc; padding: 20px; border-radius: 16px; border: 1px solid var(--border); display: none; margin-top: 25px; }
         .file-info { display: flex; flex-direction: column; align-items: center; margin-bottom: 15px; }
         #file-name { font-weight: bold; font-size: 1rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
         #transfer-mode { font-size: 0.75rem; color: var(--text-light); text-transform: uppercase; font-weight: bold; margin-top: 4px; letter-spacing: 1px; }
         
         .progress-bg { width: 100%; height: 14px; background: #e2e8f0; border-radius: 8px; overflow: hidden; margin: 15px 0; }
         .progress-fill { width: 0%; height: 100%; background: linear-gradient(90deg, var(--blue), #4facfe); transition: width 0.1s linear; border-radius: 8px; }
-        
         .stats-row { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-light); margin-bottom: 5px; }
         .stats-val { font-weight: 600; color: var(--text); }
         .text-blue { color: var(--blue); }
@@ -109,20 +65,17 @@
     <div class="status-box"><span id="status" class="pill">Waiting to Connect...</span></div>
     <h2>🚀 SwiftDrop Pro</h2>
     
-    <!-- ROOM SETUP -->
     <div id="setup-ui">
         <input type="text" id="room-id" placeholder="Enter Room Code (e.g. 1234)" autocomplete="off">
         <button class="btn btn-blue" onclick="startPeer()" id="connect-btn">🔗 Connect / Create Room</button>
     </div>
 
-    <!-- MAIN LOBBY -->
     <div id="main-ui" style="display:none;">
         <input type="file" id="file-input" style="display:none" onchange="initiateSendFile()">
         <button class="btn btn-blue" id="select-file-btn" onclick="document.getElementById('file-input').click()">📤 Select File (or Drag & Drop)</button>
         <button class="btn btn-exit" id="exit-btn" onclick="exitRoom()">🚪 Exit Room</button>
     </div>
 
-    <!-- TRANSFER UI -->
     <div id="transfer-ui" class="transfer-box">
         <div class="file-info">
             <div id="file-name">filename.mp4</div>
@@ -147,62 +100,42 @@
 </div>
 
 <script>
-    // --- GLOBAL VARIABLES & CONSTANTS ---
     let peer, conn;
     let transferActive = false;
     let receivedChunks = [];
     let fileMetadata = null;
     let receivedSize = 0;
-    let fileToSend = null; // Holds file pending the handshake
+    let fileToSend = null; 
     
-    // SAFE LIMITS (Crucial for preventing Chrome/Firefox WebRTC crashes)
-    const CHUNK_SIZE = 64 * 1024; // 64KB (Maximum safe size for WebRTC cross-browser)
-    const BUFFER_LIMIT = 8 * 1024 * 1024; // 8MB Burst Limit
-    const BUFFER_RECOVERY = 2 * 1024 * 1024; // Wait for buffer to drain to 2MB before bursting again
+    const CHUNK_SIZE = 64 * 1024; // 64KB Safe WebRTC packet size
+    
+    // STRICT BUFFERS: Limits to 2MB to prevent mobile browsers / Safari from out-of-memory crashes
+    const SAFE_BUFFER_LIMIT = 2 * 1024 * 1024; 
+    const BUFFER_DRAIN_TARGET = 512 * 1024; 
 
-    // Stats variables
-    let lastStatsTime = 0;
-    let lastStatsBytes = 0;
-    let lastUIUpdateTime = 0;
+    let lastStatsTime = 0, lastStatsBytes = 0, lastUIUpdateTime = 0;
 
-    // --- DRAG AND DROP LOGIC ---
+    // --- DRAG AND DROP ---
     const dropZone = document.getElementById('drop-zone');
-    
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        window.addEventListener(eventName, preventDefaults, false);
-    });
-
-    function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
-
-    window.addEventListener('dragover', () => {
-        if(conn && conn.open && !transferActive) dropZone.classList.add('dragover');
-    });
-
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => window.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false));
+    window.addEventListener('dragover', () => { if(conn && conn.open && !transferActive) dropZone.classList.add('dragover'); });
     window.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-    
     window.addEventListener('drop', (e) => {
         dropZone.classList.remove('dragover');
         if (!conn || !conn.open || transferActive) return;
-        
         const droppedFiles = e.dataTransfer.files;
-        if (droppedFiles.length > 0) {
-            document.getElementById('file-input').files = droppedFiles;
-            initiateSendFile();
-        }
+        if (droppedFiles.length > 0) { document.getElementById('file-input').files = droppedFiles; initiateSendFile(); }
     });
 
-    // --- PEERJS CONNECTION LOGIC ---
+    // --- CONNECTION SYSTEM ---
     function startPeer() {
         const roomInput = document.getElementById('room-id').value.trim();
         if (!roomInput) return alert("Please enter a room code!");
 
         document.getElementById('connect-btn').disabled = true;
-        updateStatus("Connecting to server...", "waiting");
+        updateStatus("Connecting...", "waiting");
         
-        // Add Google STUN servers for maximum connectivity success
-        const peerOptions = {
-            config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }] }
-        };
+        const peerOptions = { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }] } };
 
         peer = new Peer('swiftdrop-room-' + roomInput, peerOptions);
 
@@ -216,20 +149,18 @@
                 updateStatus("🟡 Room found. Joining...", "waiting");
                 peer = new Peer(peerOptions); 
                 peer.on('open', () => {
-                    const connection = peer.connect('swiftdrop-room-' + roomInput, { reliable: true });
+                    // CRITICAL FIX: "serialization: 'none'" bypasses PeerJS memory leak bugs on .mp4 files
+                    const connection = peer.connect('swiftdrop-room-' + roomInput, { serialization: 'none' });
                     connection.on('open', () => setupConn(connection));
                 });
             } else {
-                updateStatus("🔴 Connection Error", "error");
+                updateStatus("🔴 Peer Error", "error");
                 document.getElementById('connect-btn').disabled = false;
                 alert("Error: " + err.message);
             }
         });
 
-        peer.on('connection', (connection) => {
-            if (conn) { connection.close(); return; } // Deny 3rd connections
-            setupConn(connection);
-        });
+        peer.on('connection', (connection) => { if (conn) { connection.close(); return; } setupConn(connection); });
     }
 
     function setupConn(connection) {
@@ -240,7 +171,7 @@
         document.getElementById('main-ui').style.display = 'block';
 
         conn.on('data', handleIncomingData);
-
+        conn.on('error', (err) => console.error("WebRTC Error:", err));
         conn.on('close', () => {
             updateStatus("🔴 Peer disconnected.", "error");
             resetTransferUI();
@@ -251,12 +182,37 @@
         });
     }
 
-    // --- HANDLE INCOMING DATA (RECEIVER & HANDSHAKE LOOP) ---
+    // --- RECEIVER PIPELINE ---
     function handleIncomingData(data) {
-        // Is it a raw binary chunk? (The actual file data)
-        const isBinary = data instanceof ArrayBuffer || data instanceof Uint8Array || data instanceof Blob;
-
-        if (isBinary) {
+        // If data is text (Metadata JSON via serialization: 'none')
+        if (typeof data === 'string') {
+            try {
+                const parsed = JSON.parse(data);
+                
+                if (parsed.type === 'start') {
+                    transferActive = true;
+                    fileMetadata = parsed;
+                    receivedChunks = [];
+                    receivedSize = 0;
+                    initStatsTracker();
+                    showTransferUI(parsed.name, "Receiving...");
+                    lockMainUI(true);
+                    
+                    // Reply back to start stream
+                    conn.send(JSON.stringify({ type: 'ready' }));
+                } 
+                else if (parsed.type === 'ready') {
+                    beginStreamingFile();
+                }
+                else if (parsed.type === 'cancel') {
+                    alert("The other peer cancelled the transfer.");
+                    resetTransferUI();
+                    lockMainUI(false);
+                }
+            } catch (e) { console.error("Data parse error", e); }
+        } 
+        // If data is Raw Binary (The actual video chunks)
+        else {
             if (!transferActive) return;
             
             receivedChunks.push(data);
@@ -267,38 +223,11 @@
                 updateProgressAndStats(receivedSize, fileMetadata.size);
                 lastUIUpdateTime = now;
             }
-
             if (receivedSize >= fileMetadata.size) finishReceiving();
-        } 
-        else if (typeof data === 'object' && data !== null) {
-            // STEP 1: Receiver gets metadata, prepares RAM, and tells sender "Ready!"
-            if (data.type === 'start') {
-                transferActive = true;
-                fileMetadata = data;
-                receivedChunks = [];
-                receivedSize = 0;
-                
-                initStatsTracker();
-                showTransferUI(data.name, "Receiving...");
-                lockMainUI(true);
-                
-                // IMPORTANT: Tell sender we are ready to receive data
-                conn.send({ type: 'ready' });
-            } 
-            // STEP 2: Sender receives "Ready!" and begins blasting binary data
-            else if (data.type === 'ready') {
-                beginStreamingFile();
-            }
-            // Transfer cancelled by peer
-            else if (data.type === 'cancel') {
-                alert("The other peer cancelled the transfer.");
-                resetTransferUI();
-                lockMainUI(false);
-            }
         }
     }
 
-    // --- SEND FILE LOGIC (SENDER LOOP) ---
+    // --- SENDER PIPELINE ---
     function initiateSendFile() {
         const fileInput = document.getElementById('file-input');
         fileToSend = fileInput.files[0];
@@ -310,8 +239,8 @@
         initStatsTracker();
         showTransferUI(fileToSend.name, "Waiting for receiver...");
         
-        // Initiate Handshake
-        conn.send({ type: 'start', name: fileToSend.name, size: fileToSend.size, mime: fileToSend.type });
+        // Convert metadata to string because we are bypassing the PeerJS serializer
+        conn.send(JSON.stringify({ type: 'start', name: fileToSend.name, size: fileToSend.size, mime: fileToSend.type }));
     }
 
     async function beginStreamingFile() {
@@ -321,50 +250,52 @@
         let offset = 0;
         lastUIUpdateTime = Date.now();
 
-        while (offset < fileToSend.size && transferActive) {
-            // SMART BURST BUFFERING
-            if (conn.dataChannel.bufferedAmount > BUFFER_LIMIT) {
-                // Sleep until network stack clears the buffer down to safe levels
-                while(conn.dataChannel.bufferedAmount > BUFFER_RECOVERY && transferActive && conn.open) {
-                    await new Promise(resolve => setTimeout(resolve, 5));
+        try {
+            while (offset < fileToSend.size && transferActive && conn.open) {
+                
+                // CRITICAL FIX: Safe Buffer Check to prevent out-of-memory WebRTC crash
+                if (conn.dataChannel) {
+                    while (conn.dataChannel.bufferedAmount > SAFE_BUFFER_LIMIT && transferActive && conn.open) {
+                        await new Promise(resolve => setTimeout(resolve, 10)); // Rest for 10ms
+                    }
+                }
+
+                const chunk = fileToSend.slice(offset, offset + CHUNK_SIZE);
+                const buffer = await chunk.arrayBuffer();
+                
+                if (!transferActive || !conn.open) break; 
+
+                conn.send(buffer); // Send naked ArrayBuffer straight into WebRTC
+                offset += buffer.byteLength;
+                
+                const now = Date.now();
+                if (now - lastUIUpdateTime > 50) {
+                    updateProgressAndStats(offset, fileToSend.size);
+                    lastUIUpdateTime = Date.now();
+                    await new Promise(r => setTimeout(r, 0)); // Prevent DOM freezing on huge files
                 }
             }
 
-            const chunk = fileToSend.slice(offset, offset + CHUNK_SIZE);
-            const buffer = await chunk.arrayBuffer();
-            
-            if (!transferActive) break; 
-
-            conn.send(buffer);
-            offset += buffer.byteLength;
-            
-            const now = Date.now();
-            if (now - lastUIUpdateTime > 100) {
-                updateProgressAndStats(offset, fileToSend.size);
-                lastUIUpdateTime = Date.now();
+            if (transferActive && offset >= fileToSend.size) {
+                updateProgressAndStats(fileToSend.size, fileToSend.size); 
+                document.getElementById('cancel-btn').style.display = 'none';
+                document.getElementById('transfer-mode').innerText = "✅ Sent Successfully";
+                document.getElementById('speed').innerText = "--";
+                document.getElementById('eta').innerText = "--";
+                transferActive = false;
+                fileToSend = null;
+                document.getElementById('file-input').value = "";
+                setTimeout(() => { lockMainUI(false); }, 2000); 
             }
-        }
-
-        if (transferActive && offset >= fileToSend.size) {
-            updateProgressAndStats(fileToSend.size, fileToSend.size); 
-            document.getElementById('cancel-btn').style.display = 'none';
-            document.getElementById('transfer-mode').innerText = "✅ Sent Successfully";
-            document.getElementById('speed').innerText = "--";
-            document.getElementById('eta').innerText = "--";
-            transferActive = false;
-            fileToSend = null;
-            document.getElementById('file-input').value = "";
-            
-            setTimeout(() => { lockMainUI(false); }, 2000); 
+        } catch (err) {
+            console.error("Crash during stream:", err);
+            alert("Transfer failed to send. Network interrupted.");
+            cancelTransfer();
         }
     }
 
-    // --- TRANSFER UI & STATS LOGIC ---
-    function initStatsTracker() {
-        lastStatsTime = Date.now();
-        lastStatsBytes = 0;
-        lastUIUpdateTime = Date.now();
-    }
+    // --- UI & UTILS ---
+    function initStatsTracker() { lastStatsTime = Date.now(); lastStatsBytes = 0; lastUIUpdateTime = Date.now(); }
 
     function updateProgressAndStats(currentBytes, totalBytes) {
         let percent = (currentBytes / totalBytes) * 100;
@@ -378,15 +309,13 @@
         if (timeDiff >= 500 || currentBytes === totalBytes) {
             const bytesDiff = currentBytes - lastStatsBytes;
             const speedBps = (bytesDiff / timeDiff) * 1000; 
-            
             document.getElementById('speed').innerText = `${formatBytes(speedBps)}/s`;
             
             const remainingBytes = totalBytes - currentBytes;
             const etaSeconds = speedBps > 0 ? (remainingBytes / speedBps) : 0;
             document.getElementById('eta').innerText = formatTime(etaSeconds);
 
-            lastStatsBytes = currentBytes;
-            lastStatsTime = now;
+            lastStatsBytes = currentBytes; lastStatsTime = now;
         }
     }
 
@@ -407,72 +336,37 @@
         document.getElementById('eta').innerText = "--";
         
         lockMainUI(false); 
-        
-        // Instantly free memory (Crucial for large files)
-        receivedChunks = []; 
+        receivedChunks = []; // instantly clear huge RAM cache
         receivedSize = 0;
     }
 
-    // --- CANCELLATION & EXIT CONTROLS ---
     function cancelTransfer() {
-        transferActive = false;
-        fileToSend = null;
-        if (conn && conn.open) conn.send({ type: 'cancel' });
-        resetTransferUI();
-        lockMainUI(false);
+        transferActive = false; fileToSend = null;
+        if (conn && conn.open) conn.send(JSON.stringify({ type: 'cancel' }));
+        resetTransferUI(); lockMainUI(false);
         document.getElementById('file-input').value = ""; 
     }
 
-    function exitRoom() {
-        if (confirm("Are you sure you want to leave the room?")) {
-            if (peer) peer.destroy();
-            location.reload(); 
-        }
-    }
+    function exitRoom() { if (confirm("Leave room?")) { if (peer) peer.destroy(); location.reload(); } }
 
-    // --- WARNING ON TAB CLOSE ---
-    window.addEventListener("beforeunload", (e) => {
-        if (transferActive) {
-            e.preventDefault();
-            e.returnValue = "Transfer in progress! Are you sure you want to leave?";
-        }
-    });
+    window.addEventListener("beforeunload", (e) => { if (transferActive) { e.preventDefault(); e.returnValue = "Transfer in progress!"; } });
 
-    // --- UTILITY & FORMATTING FUNCTIONS ---
     function updateStatus(text, type) {
-        const statusEl = document.getElementById('status');
-        statusEl.innerText = text;
-        statusEl.className = "pill " + type;
+        const el = document.getElementById('status'); el.innerText = text; el.className = "pill " + type;
     }
 
     function showTransferUI(name, mode) {
-        document.getElementById('transfer-ui').style.display = 'block';
-        document.getElementById('cancel-btn').style.display = 'block';
-        document.getElementById('dl-btn').style.display = 'none';
-        document.getElementById('file-name').innerText = name;
-        document.getElementById('transfer-mode').innerText = mode;
-        document.getElementById('progress-bar').style.width = "0%";
-        document.getElementById('speed').innerText = "Calculating...";
-        document.getElementById('eta').innerText = "Calculating...";
+        document.getElementById('transfer-ui').style.display = 'block'; document.getElementById('cancel-btn').style.display = 'block';
+        document.getElementById('dl-btn').style.display = 'none'; document.getElementById('file-name').innerText = name;
+        document.getElementById('transfer-mode').innerText = mode; document.getElementById('progress-bar').style.width = "0%";
     }
 
-    function resetTransferUI() {
-        transferActive = false;
-        document.getElementById('transfer-ui').style.display = 'none';
-        receivedChunks = [];
-        receivedSize = 0;
-    }
-
-    function lockMainUI(isLocked) {
-        document.getElementById('select-file-btn').disabled = isLocked;
-        document.getElementById('exit-btn').disabled = isLocked;
-    }
+    function resetTransferUI() { transferActive = false; document.getElementById('transfer-ui').style.display = 'none'; receivedChunks = []; receivedSize = 0; }
+    function lockMainUI(isLocked) { document.getElementById('select-file-btn').disabled = isLocked; document.getElementById('exit-btn').disabled = isLocked; }
 
     function formatBytes(bytes, decimals = 2) {
         if (bytes === 0) return '0 Bytes';
-        const k = 1024, dm = decimals < 0 ? 0 : decimals;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        const k = 1024, dm = decimals < 0 ? 0 : decimals, sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'], i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
     }
 
@@ -481,8 +375,7 @@
         if (seconds < 1) return "< 1s";
         seconds = Math.round(seconds);
         if (seconds < 60) return seconds + "s";
-        const m = Math.floor(seconds / 60), s = seconds % 60;
-        return m + "m " + s + "s";
+        return Math.floor(seconds / 60) + "m " + (seconds % 60) + "s";
     }
 </script>
 
