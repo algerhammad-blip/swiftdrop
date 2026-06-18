@@ -3,269 +3,290 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Flappy Clone</title>
+    <title>Neon 3D Runner</title>
+    <!-- Load Three.js for 3D graphics -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        body {
+        body, html {
             margin: 0;
             padding: 0;
-            background-color: #2c3e50;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            font-family: 'Courier New', Courier, monospace;
+            width: 100%;
+            height: 100%;
             overflow: hidden;
+            background-color: #050510;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             touch-action: none; /* Prevents pull-to-refresh on mobile */
         }
-        canvas {
-            background-color: #70c5ce; /* Sky blue */
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            border: 4px solid #fff;
-            border-radius: 8px;
-            max-width: 100%;
-            max-height: 100vh;
+        canvas { display: block; }
+        
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }
+        #score-board {
+            position: absolute;
+            top: 20px;
+            font-size: 30px;
+            font-weight: bold;
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        #menu {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 40px;
+            border: 2px solid #ff00ff;
+            border-radius: 15px;
+            text-align: center;
+            pointer-events: auto;
+            box-shadow: 0 0 20px #ff00ff;
+        }
+        h1 { color: #ff00ff; margin-top: 0; text-shadow: 0 0 10px #ff00ff; font-size: 2.5rem;}
+        p { color: #fff; font-size: 1.2rem; margin-bottom: 25px; }
+        .desktop-hint { color: #aaa; font-size: 0.9rem; }
+        button {
+            background: #00ffff;
+            color: #000;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 0 15px #00ffff;
+            transition: 0.2s;
+        }
+        button:hover { background: #fff; box-shadow: 0 0 25px #fff; }
     </style>
 </head>
 <body>
 
-    <!-- Canvas resolution is fixed to maintain consistent physics -->
-    <canvas id="gameCanvas" width="320" height="480"></canvas>
+    <div id="ui-layer">
+        <div id="score-board">Score: 0</div>
+        <div id="menu">
+            <h1>NEON RUNNER</h1>
+            <p>Swipe Left/Right or A/D to dodge.<br>Swipe Up or Space to jump.</p>
+            <p class="desktop-hint">Collect blue orbs to score! Dodge red blocks!</p>
+            <button id="start-btn">PLAY</button>
+        </div>
+    </div>
 
     <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
+        // --- 1. Basic Three.js Setup ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050510, 0.015); // Adds fade-to-black in the distance
 
-        // Game State Variables
-        let frames = 0;
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 200);
+        camera.position.set(0, 6, 8); 
+        camera.lookAt(0, 0, -15); // Look down the track
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. Lighting ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        // --- 3. Scenery (Moving Grid) ---
+        const gridHelper = new THREE.GridHelper(200, 100, 0xff00ff, 0x440044);
+        gridHelper.position.y = 0;
+        scene.add(gridHelper);
+
+        // --- 4. The Player ---
+        const playerGeo = new THREE.BoxGeometry(1, 1, 1);
+        const playerMat = new THREE.MeshLambertMaterial({ color: 0x00ffff, emissive: 0x004444 });
+        const player = new THREE.Mesh(playerGeo, playerMat);
+        scene.add(player);
+
+        // --- 5. Game State & Variables ---
+        let isPlaying = false;
         let score = 0;
-        let bestScore = localStorage.getItem('flappyBestScore') || 0;
-        let currentPhase = 0; // 0: Start Screen, 1: Playing, 2: Game Over
+        let speed = 0.4;
+        let obstacles = [];
+        
+        // Player Movement Logic
+        const laneWidth = 3;
+        let currentLane = 0; // -1 (Left), 0 (Center), 1 (Right)
+        
+        // Jump Logic
+        let isJumping = false;
+        let yVelocity = 0;
+        const gravity = 0.035;
+        const jumpStrength = 0.45;
 
-        // The Bird Object
-        const bird = {
-            x: 60,
-            y: 150,
-            radius: 12,
-            velocity: 0,
-            gravity: 0.6,
-            jump: -7.5,
-            draw() {
-                // Draw Bird Body
-                ctx.fillStyle = '#f1c40f'; 
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.strokeStyle = '#000';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                
-                // Draw Eye
-                ctx.fillStyle = '#fff';
-                ctx.beginPath();
-                ctx.arc(this.x + 4, this.y - 4, 4, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = '#000';
-                ctx.beginPath();
-                ctx.arc(this.x + 5, this.y - 4, 1.5, 0, Math.PI * 2);
-                ctx.fill();
+        // UI Elements
+        const scoreBoard = document.getElementById('score-board');
+        const menu = document.getElementById('menu');
+        const startBtn = document.getElementById('start-btn');
 
-                // Draw Beak
-                ctx.fillStyle = '#e67e22';
-                ctx.beginPath();
-                ctx.moveTo(this.x + 8, this.y);
-                ctx.lineTo(this.x + 18, this.y + 3);
-                ctx.lineTo(this.x + 8, this.y + 6);
-                ctx.fill();
-                ctx.stroke();
-            },
-            flap() {
-                this.velocity = this.jump;
-            },
-            update() {
-                this.velocity += this.gravity;
-                this.y += this.velocity;
-                
-                // Hit the floor
-                if (this.y + this.radius >= canvas.height - 20) {
-                    this.y = canvas.height - 20 - this.radius;
-                    currentPhase = 2; // Game Over
-                }
-                // Hit the ceiling
-                if (this.y - this.radius <= 0) {
-                    this.y = this.radius;
-                    this.velocity = 0;
-                }
-            },
-            reset() {
-                this.y = 150;
-                this.velocity = 0;
+        // --- 6. Spawner Functions ---
+        const obstacleGeo = new THREE.BoxGeometry(2, 2, 2);
+        const obstacleMat = new THREE.MeshLambertMaterial({ color: 0xff0000, emissive: 0x550000 });
+
+        function spawnObstacle() {
+            if (!isPlaying) return;
+            
+            const obs = new THREE.Mesh(obstacleGeo, obstacleMat);
+            // Pick a random lane
+            const lane = Math.floor(Math.random() * 3) - 1; // -1, 0, or 1
+            
+            obs.position.set(lane * laneWidth, 1, -100);
+            scene.add(obs);
+            obstacles.push({ mesh: obs, lane: lane, passed: false });
+
+            // Spawn rate gets faster as score goes up
+            let nextSpawn = Math.max(500, 1500 - (score * 20)); 
+            setTimeout(spawnObstacle, nextSpawn);
+        }
+
+        // --- 7. Controls (Keyboard & Touch) ---
+        function moveLeft() { if (currentLane > -1 && isPlaying) currentLane--; }
+        function moveRight() { if (currentLane < 1 && isPlaying) currentLane++; }
+        function jump() { 
+            if (!isJumping && isPlaying) {
+                isJumping = true;
+                yVelocity = jumpStrength;
             }
-        };
+        }
 
-        // The Pipes Object
-        const pipes = {
-            items: [],
-            width: 50,
-            gap: 130, // Space between top and bottom pipe
-            dx: 3,    // Speed of pipes moving left
-            draw() {
-                for (let i = 0; i < this.items.length; i++) {
-                    let p = this.items[i];
-                    ctx.fillStyle = '#2ecc71'; 
-                    ctx.lineWidth = 2;
-                    
-                    // Top pipe
-                    ctx.fillRect(p.x, 0, this.width, p.top);
-                    ctx.strokeRect(p.x, 0, this.width, p.top);
-                    
-                    // Bottom pipe
-                    let bottomY = p.top + this.gap;
-                    let bottomHeight = canvas.height - bottomY - 20;
-                    ctx.fillRect(p.x, bottomY, this.width, bottomHeight);
-                    ctx.strokeRect(p.x, bottomY, this.width, bottomHeight);
+        // Keyboard
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowLeft' || e.code === 'KeyA') moveLeft();
+            if (e.code === 'ArrowRight' || e.code === 'KeyD') moveRight();
+            if (e.code === 'ArrowUp' || e.code === 'Space' || e.code === 'KeyW') jump();
+        });
+
+        // Touch / Swipe Controls
+        let touchStartX = 0;
+        let touchStartY = 0;
+        window.addEventListener('touchstart', e => {
+            touchStartX = e.changedTouches[0].screenX;
+            touchStartY = e.changedTouches[0].screenY;
+        });
+        window.addEventListener('touchend', e => {
+            let dx = e.changedTouches[0].screenX - touchStartX;
+            let dy = e.changedTouches[0].screenY - touchStartY;
+            
+            // Check if swipe was mostly horizontal or vertical
+            if (Math.abs(dx) > Math.abs(dy)) {
+                if (dx > 30) moveRight();
+                else if (dx < -30) moveLeft();
+            } else {
+                if (dy < -30) jump(); // Swiped up
+            }
+        });
+
+        // Window Resizing
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+
+        // --- 8. Core Game Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isPlaying) {
+                // Smoothly slide player to their target lane
+                const targetX = currentLane * laneWidth;
+                player.position.x += (targetX - player.position.x) * 0.15;
+
+                // Handle Jump Physics
+                if (isJumping) {
+                    player.position.y += yVelocity;
+                    yVelocity -= gravity;
+                    if (player.position.y <= 0.5) { // 0.5 is ground level for our cube
+                        player.position.y = 0.5;
+                        isJumping = false;
+                        yVelocity = 0;
+                    }
                 }
-            },
-            update() {
-                // Spawn a new pipe every 80 frames
-                if (frames % 80 === 0) {
-                    this.items.push({
-                        x: canvas.width,
-                        top: Math.random() * (canvas.height - this.gap - 80) + 20,
-                        passed: false
-                    });
-                }
-                for (let i = 0; i < this.items.length; i++) {
-                    let p = this.items[i];
-                    p.x -= this.dx;
 
-                    // Collision Detection (Bird hitting pipes)
-                    let birdLeft = bird.x - bird.radius;
-                    let birdRight = bird.x + bird.radius;
-                    let birdTop = bird.y - bird.radius;
-                    let birdBottom = bird.y + bird.radius;
+                // Animate grid to simulate forward movement
+                gridHelper.position.z += speed;
+                if (gridHelper.position.z > 2) gridHelper.position.z = 0;
 
-                    if (birdRight > p.x && birdLeft < p.x + this.width) {
-                        if (birdTop < p.top || birdBottom > p.top + this.gap) {
-                            currentPhase = 2; // Hit a pipe!
+                // Speed increases slightly over time
+                speed += 0.0001;
+
+                // Move obstacles and check collisions
+                for (let i = obstacles.length - 1; i >= 0; i--) {
+                    let obs = obstacles[i];
+                    obs.mesh.position.z += speed;
+
+                    // Collision Detection (Check Z depth, X lane, and Y height)
+                    if (obs.mesh.position.z > player.position.z - 1 && 
+                        obs.mesh.position.z < player.position.z + 1) {
+                        
+                        if (obs.lane === currentLane && player.position.y < 1.8) {
+                            gameOver();
                         }
                     }
 
-                    // Score increment (Passing a pipe)
-                    if (p.x + this.width < birdLeft && !p.passed) {
-                        score++;
-                        p.passed = true;
+                    // Score increment
+                    if (obs.mesh.position.z > player.position.z && !obs.passed) {
+                        score += 10;
+                        obs.passed = true;
+                        scoreBoard.innerText = `Score: ${score}`;
                     }
 
-                    // Remove pipes that went off-screen
-                    if (p.x + this.width < 0) {
-                        this.items.shift();
-                        i--;
+                    // Remove objects that passed the camera
+                    if (obs.mesh.position.z > 10) {
+                        scene.remove(obs.mesh);
+                        obstacles.splice(i, 1);
                     }
                 }
-            },
-            reset() {
-                this.items = [];
             }
-        };
 
-        // UI & Scenery Drawing Functions
-        function drawFloor() {
-            ctx.fillStyle = '#ded895';
-            ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
-            ctx.fillStyle = '#73bf2e';
-            ctx.fillRect(0, canvas.height - 25, canvas.width, 5);
+            // Spin the player slightly for style
+            player.rotation.x += 0.02;
+            player.rotation.y += 0.02;
+
+            renderer.render(scene, camera);
         }
 
-        function drawUI() {
-            ctx.fillStyle = '#FFF';
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 3;
+        // --- 9. Game Management ---
+        function startGame() {
+            menu.style.display = 'none';
+            scoreBoard.style.display = 'block';
             
-            if (currentPhase === 0) {
-                ctx.font = "bold 24px 'Courier New'";
-                ctx.strokeText("TAP TO START", 70, canvas.height/2);
-                ctx.fillText("TAP TO START", 70, canvas.height/2);
-            } else if (currentPhase === 1) {
-                ctx.font = "bold 40px 'Courier New'";
-                ctx.strokeText(score, canvas.width/2 - 15, 60);
-                ctx.fillText(score, canvas.width/2 - 15, 60);
-            } else if (currentPhase === 2) {
-                ctx.font = "bold 35px 'Courier New'";
-                ctx.strokeText("GAME OVER", 65, canvas.height/2 - 40);
-                ctx.fillText("GAME OVER", 65, canvas.height/2 - 40);
-                
-                ctx.font = "bold 20px 'Courier New'";
-                ctx.strokeText(`Score: ${score}`, 110, canvas.height/2 + 10);
-                ctx.fillText(`Score: ${score}`, 110, canvas.height/2 + 10);
-                
-                ctx.strokeText(`Best: ${bestScore}`, 115, canvas.height/2 + 40);
-                ctx.fillText(`Best: ${bestScore}`, 115, canvas.height/2 + 40);
-                
-                ctx.font = "bold 16px 'Courier New'";
-                ctx.strokeText("Tap to Restart", 90, canvas.height/2 + 90);
-                ctx.fillText("Tap to Restart", 90, canvas.height/2 + 90);
-            }
+            // Reset state
+            score = 0;
+            speed = 0.4;
+            currentLane = 0;
+            player.position.set(0, 0.5, 0);
+            scoreBoard.innerText = `Score: 0`;
+            
+            // Clear old obstacles
+            obstacles.forEach(obs => scene.remove(obs.mesh));
+            obstacles = [];
+
+            isPlaying = true;
+            setTimeout(spawnObstacle, 1000);
         }
 
-        // Main Game Loop
-        function loop() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            pipes.draw();
-            drawFloor();
-            bird.draw();
-            drawUI();
-
-            if (currentPhase === 1) {
-                bird.update();
-                pipes.update();
-                frames++;
-            } else if (currentPhase === 2) {
-                // Update High Score
-                if (score > bestScore) {
-                    bestScore = score;
-                    localStorage.setItem('flappyBestScore', bestScore);
-                }
-                // Make the bird fall to the ground when dead
-                if (bird.y + bird.radius < canvas.height - 20) {
-                    bird.velocity += bird.gravity;
-                    bird.y += bird.velocity;
-                }
-            }
-
-            requestAnimationFrame(loop);
+        function gameOver() {
+            isPlaying = false;
+            menu.style.display = 'block';
+            menu.querySelector('h1').innerText = "CRASHED!";
+            menu.querySelector('p').innerText = `Final Score: ${score}`;
+            startBtn.innerText = "TRY AGAIN";
         }
 
-        // Input Handling
-        function handleInput() {
-            if (currentPhase === 0) {
-                currentPhase = 1; // Start Game
-                bird.flap();
-            } else if (currentPhase === 1) {
-                bird.flap();      // Jump
-            } else if (currentPhase === 2 && bird.y + bird.radius >= canvas.height - 20) {
-                // Only allow restart after bird hits the ground
-                frames = 0;
-                score = 0;
-                bird.reset();
-                pipes.reset();
-                currentPhase = 0;
-            }
-        }
+        startBtn.addEventListener('click', startGame);
 
-        // Listeners for Desktop and Mobile
-        window.addEventListener('keydown', (e) => {
-            if(e.code === 'Space' || e.code === 'ArrowUp') handleInput();
-        });
-        canvas.addEventListener('mousedown', handleInput);
-        canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // Prevents mobile screen zooming/scrolling
-            handleInput();
-        }, {passive: false});
-
-        // Start Loop
-        loop();
+        // Start Rendering Loop
+        player.position.set(0, 0.5, 0); // initial position
+        animate();
     </script>
 </body>
 </html>
