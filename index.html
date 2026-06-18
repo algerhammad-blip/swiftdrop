@@ -15,7 +15,8 @@
         .pill { padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; background: #eee; }
         .online { background: #e6f9f1; color: var(--green); }
         
-        input { width: 100%; padding: 14px; border: 2px solid #edf2f7; border-radius: 12px; font-size: 1rem; box-sizing: border-box; outline: none; margin-bottom: 10px; }
+        .input-area { margin-bottom: 20px; }
+        input { width: 100%; padding: 14px; border: 2px solid #edf2f7; border-radius: 12px; font-size: 1rem; box-sizing: border-box; outline: none; }
         input:focus { border-color: var(--blue); }
         
         .btn { width: 100%; padding: 15px; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s; margin-top: 10px; }
@@ -26,7 +27,7 @@
 
         .transfer-box { background: #f1f5f9; padding: 15px; border-radius: 16px; display: none; margin-top: 20px; }
         .progress-bg { width: 100%; height: 10px; background: #cbd5e1; border-radius: 5px; overflow: hidden; margin: 10px 0; }
-        .progress-fill { width: 0%; height: 100%; background: var(--blue); transition: width 0.1s; }
+        .progress-fill { width: 0%; height: 100%; background: var(--blue); }
         
         #dl-btn { background: var(--green); color: white; text-decoration: none; display: none; text-align: center; }
     </style>
@@ -43,34 +44,35 @@
     </div>
 
     <div id="main-ui" style="display:none;">
-        <input type="file" id="file-input" style="display:none" onchange="handleFileSelect()">
+        <input type="file" id="file-input" style="display:none" onchange="sendFile()">
         <button class="btn btn-blue" onclick="document.getElementById('file-input').click()">📤 SELECT FILE</button>
+        <!-- EXIT ROOM BUTTON -->
         <button class="btn btn-exit" onclick="exitRoom()">🚪 EXIT ROOM</button>
     </div>
 
     <div id="transfer-ui" class="transfer-box">
         <div id="file-name" style="font-weight:bold; font-size:0.9rem; margin-bottom:5px;"></div>
-        <div id="transfer-mode" style="font-size:0.7rem; color:#64748b; text-transform:uppercase;">Processing...</div>
+        <div id="transfer-mode" style="font-size:0.7rem; color:#64748b; text-transform:uppercase;">Sending...</div>
         <div class="progress-bg"><div id="progress-bar" class="progress-fill"></div></div>
         <div style="display:flex; justify-content:space-between; font-size:0.8rem;">
             <span id="perc">0%</span>
             <span id="size">0MB / 0MB</span>
         </div>
         <a id="dl-btn" class="btn">💾 SAVE FILE</a>
-        <button id="cancel-btn" class="btn btn-red" onclick="cancelTransfer()">✖ CANCEL</button>
+        <!-- CANCEL BUTTON -->
+        <button id="cancel-btn" class="btn btn-red" onclick="cancelTransfer()">✖ CANCEL TRANSFER</button>
     </div>
 </div>
 
 <script>
     let peer, conn;
-    let transferActive = false;
-    let chunks = [];
-    let meta = null;
-    const CHUNK_SIZE = 16384 * 4; // 64KB
+    let transferActive = false; // Tracks if a file is currently moving
+    const CHUNK_SIZE = 16384 * 4; // 64KB chunks
 
     function startPeer() {
         const room = document.getElementById('room-id').value;
         if (!room) return alert("Enter code");
+        
         document.getElementById('status').innerText = "Connecting...";
         
         peer = new Peer('sd-room-' + room);
@@ -100,6 +102,9 @@
         document.getElementById('setup-ui').style.display = 'none';
         document.getElementById('main-ui').style.display = 'block';
 
+        let chunks = [];
+        let meta = null;
+
         conn.on('data', (data) => {
             if (data.type === 'start') {
                 transferActive = true;
@@ -107,7 +112,7 @@
                 chunks = [];
                 showTransferUI("Receiving: " + data.name, "Receiving...");
             } else if (data.type === 'chunk') {
-                if(!transferActive) return;
+                if (!transferActive) return; // Ignore chunks if cancelled
                 chunks.push(data.data);
                 let progress = (chunks.length * CHUNK_SIZE / meta.size) * 100;
                 updateProgress(progress, chunks.length * CHUNK_SIZE, meta.size);
@@ -124,31 +129,25 @@
                     transferActive = false;
                 }
             } else if (data.type === 'cancel') {
-                handleReset("Transfer cancelled by peer");
+                transferActive = false;
+                document.getElementById('transfer-ui').style.display = 'none';
+                alert("Transfer cancelled by peer.");
             }
         });
-
+        
         conn.on('close', () => {
-            handleReset("Peer disconnected");
+            updateStatus("🔴 Peer Disconnected", false);
+            document.getElementById('transfer-ui').style.display = 'none';
         });
     }
 
-    async function handleFileSelect() {
+    async function sendFile() {
         const file = document.getElementById('file-input').files[0];
-        if (!file) return;
-        
-        // IMMEDIATE INDICATION
+        if (!file || !conn) return;
+
         transferActive = true;
         showTransferUI("Sending: " + file.name, "Sending...");
         
-        // Use a small timeout to allow the UI to show the "Sending..." box 
-        // before the heavy processing starts
-        setTimeout(() => sendFile(file), 100);
-    }
-
-    async function sendFile(file) {
-        if (!conn || !transferActive) return;
-
         conn.send({ type: 'start', name: file.name, size: file.size });
 
         let offset = 0;
@@ -160,16 +159,14 @@
             offset += CHUNK_SIZE;
             let progress = (offset / file.size) * 100;
             
-            if (offset % (CHUNK_SIZE * 10) === 0 || offset >= file.size) {
+            if (offset % (CHUNK_SIZE * 5) === 0 || offset >= file.size) {
                 updateProgress(progress, offset, file.size);
             }
-
-            // CRITICAL: This allows the browser to remain responsive (and process the "Cancel" click)
-            if (offset % (CHUNK_SIZE * 20) === 0) {
-                await new Promise(r => setTimeout(r, 0));
-            }
+            
+            // Critical: Allows browser to process "Cancel" click during loop
+            await new Promise(resolve => setTimeout(resolve, 0));
         }
-
+        
         if (transferActive) {
             updateStatus("✅ Transfer Complete", true);
             document.getElementById('cancel-btn').style.display = 'none';
@@ -178,22 +175,16 @@
     }
 
     function cancelTransfer() {
+        transferActive = false;
         if (conn) conn.send({ type: 'cancel' });
-        handleReset("Transfer cancelled");
+        document.getElementById('transfer-ui').style.display = 'none';
+        document.getElementById('file-input').value = ""; 
     }
 
     function exitRoom() {
-        if(peer) peer.destroy();
-        location.reload(); 
-    }
-
-    function handleReset(msg) {
-        transferActive = false;
-        chunks = [];
-        document.getElementById('transfer-ui').style.display = 'none';
-        document.getElementById('file-input').value = "";
-        updateStatus("🟢 Connected", true);
-        if(msg) alert(msg);
+        if (conn) conn.close();
+        if (peer) peer.destroy();
+        location.reload(); // Simplest way to reset everything
     }
 
     function updateStatus(txt, isOnline) {
@@ -205,10 +196,9 @@
     function showTransferUI(name, mode) {
         document.getElementById('transfer-ui').style.display = 'block';
         document.getElementById('cancel-btn').style.display = 'block';
-        document.getElementById('dl-btn').style.display = 'none';
         document.getElementById('file-name').innerText = name;
         document.getElementById('transfer-mode').innerText = mode;
-        document.getElementById('progress-bar').style.width = "0%";
+        document.getElementById('dl-btn').style.display = 'none';
     }
 
     function updateProgress(p, cur, tot) {
