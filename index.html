@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SwiftDrop P2P Pro</title>
+    <title>SwiftDrop P2P Pro - Max Speed</title>
     <!-- PeerJS for WebRTC Connections -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
@@ -162,7 +162,7 @@
             width: 0%;
             height: 100%;
             background: linear-gradient(90deg, var(--blue), #4facfe);
-            transition: width 0.15s linear;
+            transition: width 0.1s linear;
             border-radius: 8px;
         }
         
@@ -184,20 +184,20 @@
     <div class="status-box"><span id="status" class="pill">Waiting to Connect...</span></div>
     <h2>🚀 SwiftDrop Pro</h2>
     
-    <!-- 1. ROOM SETUP UI -->
+    <!-- ROOM SETUP UI -->
     <div id="setup-ui">
         <input type="text" id="room-id" placeholder="Enter Room Code (e.g. 1234)" autocomplete="off">
         <button class="btn btn-blue" onclick="startPeer()" id="connect-btn">🔗 Connect / Create Room</button>
     </div>
 
-    <!-- 2. MAIN LOBBY UI (Visible when 2 peers are connected) -->
+    <!-- MAIN LOBBY UI -->
     <div id="main-ui" style="display:none;">
         <input type="file" id="file-input" style="display:none" onchange="sendFile()">
         <button class="btn btn-blue" id="select-file-btn" onclick="document.getElementById('file-input').click()">📤 Select & Send File</button>
         <button class="btn btn-exit" id="exit-btn" onclick="exitRoom()">🚪 Exit Room</button>
     </div>
 
-    <!-- 3. TRANSFER UI (Visible during file transfer) -->
+    <!-- TRANSFER UI -->
     <div id="transfer-ui" class="transfer-box">
         <div class="file-info">
             <div id="file-name">filename.mp4</div>
@@ -229,42 +229,39 @@
     let transferActive = false;
     let receivedChunks = [];
     let fileMetadata = null;
+    let receivedSize = 0;
     
-    // WebRTC Chunk size (64KB is universally optimal for WebRTC Data Channels)
-    const CHUNK_SIZE = 64 * 1024; 
+    // SPEED FIX: Huge 256KB Chunks (Requires less packet processing)
+    const CHUNK_SIZE = 256 * 1024; 
 
-    // Stats tracking variables
+    // SPEED FIX: Huge 16MB Burst Buffer limit
+    const BUFFER_LIMIT = 16 * 1024 * 1024; 
+    const BUFFER_RECOVERY = 8 * 1024 * 1024; // Wait until buffer drops below 8MB before bursting again
+
+    // Stats tracking
     let lastStatsTime = 0;
     let lastStatsBytes = 0;
-    let uiUpdateInterval = 0;
+    let lastUIUpdateTime = 0;
 
     // --- PEERJS CONNECTION LOGIC ---
     function startPeer() {
         const roomInput = document.getElementById('room-id').value.trim();
-        if (!roomInput) {
-            alert("Please enter a room code!");
-            return;
-        }
+        if (!roomInput) return alert("Please enter a room code!");
 
-        // Disable UI while connecting
         document.getElementById('connect-btn').disabled = true;
         updateStatus("Connecting to server...", "waiting");
         
-        // Attempt to create the room as the HOST
         peer = new Peer('swiftdrop-room-' + roomInput);
 
         peer.on('open', () => {
-            // Room created successfully! Now we wait for a guest.
-            updateStatus(`🟢 Room '${roomInput}' created. Waiting for peer...`, "waiting");
+            updateStatus(`🟢 Room '${roomInput}' active. Waiting for peer...`, "waiting");
             document.getElementById('setup-ui').style.display = 'none';
         });
 
         peer.on('error', (err) => {
             if (err.type === 'unavailable-id') {
-                // Room already exists! That means we are the GUEST joining the host.
                 updateStatus("🟡 Room found. Joining...", "waiting");
-                peer = new Peer(); // Create guest peer with random ID
-                
+                peer = new Peer(); 
                 peer.on('open', () => {
                     const connection = peer.connect('swiftdrop-room-' + roomInput, { reliable: true });
                     connection.on('open', () => setupConn(connection));
@@ -276,13 +273,8 @@
             }
         });
 
-        // If we are the host, this triggers when the guest connects to us
         peer.on('connection', (connection) => {
-            if (conn) {
-                // Deny third person if already connected
-                connection.close(); 
-                return;
-            }
+            if (conn) { connection.close(); return; }
             setupConn(connection);
         });
     }
@@ -309,38 +301,42 @@
 
     // --- HANDLE INCOMING DATA (RECEIVER LOOP) ---
     function handleIncomingData(data) {
-        // 1. Metadata received (Start transfer)
-        if (data.type === 'start') {
-            transferActive = true;
-            fileMetadata = data;
-            receivedChunks = [];
-            
-            initStatsTracker();
-            showTransferUI(data.name, "Receiving...");
-            lockMainUI(true);
-        } 
-        
-        // 2. File Chunks received
-        else if (data.type === 'chunk') {
+        // SPEED FIX: Is it a raw file chunk? Bypass JSON parsing entirely!
+        if (data.byteLength !== undefined || data instanceof ArrayBuffer || data instanceof Blob || data instanceof Uint8Array) {
             if (!transferActive) return;
-            receivedChunks.push(data.data);
             
-            let receivedSize = receivedChunks.length * CHUNK_SIZE;
-            if (receivedSize > fileMetadata.size) receivedSize = fileMetadata.size;
+            receivedChunks.push(data);
+            receivedSize += data.byteLength || data.size || data.length;
 
-            updateProgressAndStats(receivedSize, fileMetadata.size);
+            const now = Date.now();
+            // UI Render Throttle: Only update screen 10 times a second to prevent freezing
+            if (now - lastUIUpdateTime > 100 || receivedSize >= fileMetadata.size) {
+                updateProgressAndStats(receivedSize, fileMetadata.size);
+                lastUIUpdateTime = now;
+            }
 
-            // Transfer Complete Logic
+            // Transfer Done Check
             if (receivedSize >= fileMetadata.size) {
                 finishReceiving();
             }
         } 
-        
-        // 3. Transfer Cancelled by Sender
-        else if (data.type === 'cancel') {
-            alert("The sender cancelled the file transfer.");
-            resetTransferUI();
-            lockMainUI(false);
+        // Otherwise, it must be metadata JSON
+        else {
+            if (data.type === 'start') {
+                transferActive = true;
+                fileMetadata = data;
+                receivedChunks = [];
+                receivedSize = 0;
+                
+                initStatsTracker();
+                showTransferUI(data.name, "Receiving...");
+                lockMainUI(true);
+            } 
+            else if (data.type === 'cancel') {
+                alert("The sender cancelled the file transfer.");
+                resetTransferUI();
+                lockMainUI(false);
+            }
         }
     }
 
@@ -356,72 +352,74 @@
         initStatsTracker();
         showTransferUI(file.name, "Sending...");
         
-        // Tell receiver to get ready
+        // 1. Send Metadata
         conn.send({ type: 'start', name: file.name, size: file.size, mime: file.type });
 
         let offset = 0;
-        
-        // Chunk reading and sending loop
+        lastUIUpdateTime = Date.now();
+
+        // 2. Data Streaming Loop
         while (offset < file.size && transferActive) {
             
-            // --- BUFFER OVERFLOW PROTECTION (CRITICAL FOR LARGE FILES) ---
-            // If WebRTC buffer gets larger than 2MB, pause for 50ms to let it drain
-            if (conn.dataChannel.bufferedAmount > 2 * 1024 * 1024) { 
-                await new Promise(resolve => setTimeout(resolve, 50)); 
-                continue; 
+            // SPEED FIX: The Burst Buffer Strategy
+            // Dump data fast until 16MB, then pause until browser clears it down to 8MB.
+            if (conn.dataChannel.bufferedAmount > BUFFER_LIMIT) {
+                while (conn.dataChannel.bufferedAmount > BUFFER_RECOVERY) {
+                    await new Promise(resolve => setTimeout(resolve, 5)); // Micro-sleep until drained
+                }
             }
 
             const chunk = file.slice(offset, offset + CHUNK_SIZE);
             const buffer = await chunk.arrayBuffer();
             
-            // Safety check: if user clicked cancel during await, stop sending
             if (!transferActive) break; 
 
-            conn.send({ type: 'chunk', data: buffer });
+            // SPEED FIX: Send the raw ArrayBuffer. Do NOT wrap it in JSON.
+            conn.send(buffer);
             offset += buffer.byteLength;
             
-            updateProgressAndStats(offset, file.size);
-
-            // Yield to browser UI thread to prevent freezing
-            if (offset % (CHUNK_SIZE * 10) === 0) {
-                await new Promise(resolve => setTimeout(resolve, 0));
+            const now = Date.now();
+            // UI Render Throttle
+            if (now - lastUIUpdateTime > 100) {
+                updateProgressAndStats(offset, file.size);
+                lastUIUpdateTime = Date.now();
             }
         }
 
-        // Completion logic
         if (transferActive && offset >= file.size) {
+            updateProgressAndStats(file.size, file.size); // Force 100% update
             document.getElementById('cancel-btn').style.display = 'none';
             document.getElementById('transfer-mode').innerText = "✅ Sent Successfully";
             document.getElementById('speed').innerText = "--";
             document.getElementById('eta').innerText = "--";
             transferActive = false;
             
-            setTimeout(() => { lockMainUI(false); }, 2000); // Unlock UI after 2 sec
+            setTimeout(() => { lockMainUI(false); }, 2000); 
         }
         
-        fileInput.value = ""; // Reset input so same file can be selected again
+        fileInput.value = ""; 
     }
 
     // --- TRANSFER UI & STATS LOGIC ---
     function initStatsTracker() {
         lastStatsTime = Date.now();
         lastStatsBytes = 0;
+        lastUIUpdateTime = Date.now();
     }
 
     function updateProgressAndStats(currentBytes, totalBytes) {
-        // Update Progress Bar
         let percent = (currentBytes / totalBytes) * 100;
         document.getElementById('progress-bar').style.width = Math.min(percent, 100) + "%";
         document.getElementById('perc').innerText = Math.floor(percent) + "%";
         document.getElementById('size').innerText = `${formatBytes(currentBytes)} / ${formatBytes(totalBytes)}`;
 
-        // Throttle Speed & ETA calculations to twice a second (500ms) for stability
         const now = Date.now();
         const timeDiff = now - lastStatsTime;
         
+        // Refresh Speed/ETA heavily throttled (every 500ms) for visual stability
         if (timeDiff >= 500 || currentBytes === totalBytes) {
             const bytesDiff = currentBytes - lastStatsBytes;
-            const speedBps = (bytesDiff / timeDiff) * 1000; // Bytes per second
+            const speedBps = (bytesDiff / timeDiff) * 1000; 
             
             document.getElementById('speed').innerText = `${formatBytes(speedBps)}/s`;
             
@@ -437,35 +435,29 @@
     function finishReceiving() {
         transferActive = false;
         
-        // Assemble file chunks into a single Blob
+        // Assemble chunks
         const blob = new Blob(receivedChunks, { type: fileMetadata.mime });
         const url = URL.createObjectURL(blob);
         
-        // Setup download button
         const dlBtn = document.getElementById('dl-btn');
         dlBtn.href = url;
         dlBtn.download = fileMetadata.name;
         dlBtn.style.display = 'flex';
         
-        // Update UI
         document.getElementById('cancel-btn').style.display = 'none';
         document.getElementById('transfer-mode').innerText = "✅ File Ready to Save";
         document.getElementById('speed').innerText = "--";
         document.getElementById('eta').innerText = "--";
         
-        // Unlock main UI so they can send files back
         lockMainUI(false); 
-        
-        // Free memory chunks
-        receivedChunks = []; 
+        receivedChunks = []; // Free up RAM instantly
+        receivedSize = 0;
     }
 
     // --- CANCELLATION & EXIT CONTROLS ---
     function cancelTransfer() {
         transferActive = false;
-        if (conn && conn.open) {
-            conn.send({ type: 'cancel' });
-        }
+        if (conn && conn.open) conn.send({ type: 'cancel' });
         resetTransferUI();
         lockMainUI(false);
         document.getElementById('file-input').value = ""; 
@@ -500,6 +492,7 @@
         transferActive = false;
         document.getElementById('transfer-ui').style.display = 'none';
         receivedChunks = [];
+        receivedSize = 0;
     }
 
     function lockMainUI(isLocked) {
@@ -519,10 +512,8 @@
     function formatTime(seconds) {
         if (!isFinite(seconds) || seconds < 0) return "--";
         if (seconds < 1) return "< 1s";
-        
         seconds = Math.round(seconds);
         if (seconds < 60) return seconds + "s";
-        
         const m = Math.floor(seconds / 60);
         const s = seconds % 60;
         return m + "m " + s + "s";
